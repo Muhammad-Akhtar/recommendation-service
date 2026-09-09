@@ -17,8 +17,12 @@ from app.recommendation_repository import RecommendationCandidate
 @pytest.fixture(autouse=True)
 def clear_settings_cache():
     get_settings.cache_clear()
+    from app.resilience import reset_redis_breaker_for_tests
+
+    reset_redis_breaker_for_tests()
     yield
     get_settings.cache_clear()
+    reset_redis_breaker_for_tests()
 
 
 SEED_CANDIDATES = [

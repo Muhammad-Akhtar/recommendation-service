@@ -37,6 +37,7 @@ from .recommendation_service import generate_recommendations
 from .recommendation_store import POPULAR_RECOMMENDATIONS
 from .recommender import get_recommendations
 from .redis_client import redis_client
+from .resilience import CircuitOpenError, call_with_circuit, get_redis_breaker
 from .schemas import (
     HealthResponse,
     InteractionPublishResponse,
@@ -307,9 +308,15 @@ async def read_recommendations(
     ),
 ) -> RecommendationResponse:
     """
-    Serve recommendations (Task 19 flow):
+    Serve recommendations (Tasks 4–19, 21–22 flow):
 
-    Cache → Feature Store + Model → PostgreSQL store → popular fallback
+    Cache → Features + Candidates → Model → cache
+      ↓ (Redis / model unavailable)
+    PostgreSQL recommendations store
+      ↓
+    Popular fallback
+
+    Principle: degrade quality, do not take down the API.
     """
     settings = get_settings()
     cache_key = _cache_key(user_id)
@@ -322,10 +329,14 @@ async def read_recommendations(
         span.set_attribute("user.id", user_id)
 
         try:
-            # 1. Try Redis cache
+            # 1. Try Redis cache (circuit breaker short-circuits a slow/dead Redis)
             try:
                 with tracer.start_as_current_span("redis_cache_lookup"):
-                    cached = await redis_client.get(cache_key)
+                    cached = await call_with_circuit(
+                        get_redis_breaker(),
+                        lambda: redis_client.get(cache_key),
+                        operation="cache_get",
+                    )
 
                 if cached:
                     REDIS_HITS.inc()
@@ -347,6 +358,15 @@ async def read_recommendations(
                     user_id=user_id,
                     cache_key=cache_key,
                 )
+            except CircuitOpenError as e:
+                redis_available = False
+                REDIS_FAILURES.labels(operation="cache_get").inc()
+                logger.warning(
+                    "redis_circuit_open",
+                    user_id=user_id,
+                    operation="cache_get",
+                    error=str(e),
+                )
             except Exception as e:
                 redis_available = False
                 REDIS_FAILURES.labels(operation="cache_get").inc()
@@ -367,11 +387,23 @@ async def read_recommendations(
                     )
                     try:
                         with tracer.start_as_current_span("redis_cache_write"):
-                            await redis_client.set(
-                                cache_key,
-                                response.model_dump_json(),
-                                ex=settings.cache_ttl,
+                            await call_with_circuit(
+                                get_redis_breaker(),
+                                lambda: redis_client.set(
+                                    cache_key,
+                                    response.model_dump_json(),
+                                    ex=settings.cache_ttl,
+                                ),
+                                operation="cache_set",
                             )
+                    except CircuitOpenError as e:
+                        REDIS_FAILURES.labels(operation="cache_set").inc()
+                        logger.warning(
+                            "redis_circuit_open",
+                            user_id=user_id,
+                            operation="cache_set",
+                            error=str(e),
+                        )
                     except Exception as e:
                         REDIS_FAILURES.labels(operation="cache_set").inc()
                         logger.warning(
@@ -384,6 +416,14 @@ async def read_recommendations(
                     model_version_label = response.model_version
                     span.set_attribute("recommendation.source", source)
                     return response
+                except CircuitOpenError as e:
+                    redis_available = False
+                    logger.warning(
+                        "redis_circuit_open",
+                        user_id=user_id,
+                        operation="features_get",
+                        error=str(e),
+                    )
                 except Exception as e:
                     logger.warning(
                         "model_path_unavailable",
@@ -408,11 +448,23 @@ async def read_recommendations(
                 if redis_available:
                     try:
                         with tracer.start_as_current_span("redis_cache_write"):
-                            await redis_client.set(
-                                cache_key,
-                                response.model_dump_json(),
-                                ex=settings.cache_ttl,
+                            await call_with_circuit(
+                                get_redis_breaker(),
+                                lambda: redis_client.set(
+                                    cache_key,
+                                    response.model_dump_json(),
+                                    ex=settings.cache_ttl,
+                                ),
+                                operation="cache_set",
                             )
+                    except CircuitOpenError as e:
+                        REDIS_FAILURES.labels(operation="cache_set").inc()
+                        logger.warning(
+                            "redis_circuit_open",
+                            user_id=user_id,
+                            operation="cache_set",
+                            error=str(e),
+                        )
                     except Exception as e:
                         REDIS_FAILURES.labels(operation="cache_set").inc()
                         logger.warning(

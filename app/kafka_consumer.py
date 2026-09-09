@@ -11,7 +11,10 @@ from app.database import close_db, get_pool, init_db
 from app.event_store import save_user_event
 from app.events import UserInteractionEvent
 from app.feature_store import apply_interaction_event
+from app.kafka_producer import publish_to_dlq
+from app.metrics import DLQ_MESSAGES_TOTAL
 from app.redis_client import redis_client
+from app.resilience import retry_async
 from app.schema_registry import (
     SchemaRegistryClient,
     decode_avro_message,
@@ -38,30 +41,57 @@ class PartitionRebalanceListener(ConsumerRebalanceListener):
         log(f"[{self.instance_id}] partitions assigned: {parts or 'none'}")
 
 
-async def process_event(event: UserInteractionEvent, instance_id: str) -> None:
-    """
-    Task 18 upgraded pipeline for one event:
-
-      1) PostgreSQL user_events  → durable history (source of truth)
-      2) Redis features:user:*   → online features for inference
-    """
-    # 1. Durable write first
+async def _save_event_durable(event: UserInteractionEvent) -> int:
     pool = get_pool()
     async with pool.acquire() as connection:
-        event_id = await save_user_event(event, connection)
+        return await save_user_event(event, connection)
+
+
+async def process_event(event: UserInteractionEvent, instance_id: str) -> None:
+    """
+    Task 18 pipeline + resilience:
+
+      1) PostgreSQL user_events with retry → on exhaustion: DLQ and stop
+      2) Redis features:user:* (best-effort after durable success)
+    """
+    settings = get_settings()
+
+    # 1. Durable write with limited retries — then DLQ (do not block the partition forever)
+    try:
+        event_id = await retry_async(
+            lambda: _save_event_durable(event),
+            attempts=settings.consumer_pg_attempts,
+            base_delay=settings.retry_base_delay_seconds,
+            operation="consumer_pg_save",
+        )
+    except Exception as e:
+        log(
+            f"[{instance_id}] durable write failed after retries "
+            f"user={event.user_id}: {e} → DLQ"
+        )
+        await publish_to_dlq(event, error=str(e), instance_id=instance_id)
+        DLQ_MESSAGES_TOTAL.inc()
+        return
+
     log(
         f"[{instance_id}] Saved user_events id={event_id} "
         f"user={event.user_id} item={event.item_id} type={event.event_type}"
     )
 
-    # 2. Materialize online features (derived state)
-    features = await apply_interaction_event(event, redis_client)
-    log(
-        f"[{instance_id}] Materialized Redis features user={features.user_id} "
-        f"clicks={features.click_count} "
-        f"purchases={features.purchase_count} "
-        f"last_item={features.last_item_id}"
-    )
+    # 2. Materialize online features (derived). History already durable — soft-fail Redis.
+    try:
+        features = await apply_interaction_event(event, redis_client)
+        log(
+            f"[{instance_id}] Materialized Redis features user={features.user_id} "
+            f"clicks={features.click_count} "
+            f"purchases={features.purchase_count} "
+            f"last_item={features.last_item_id}"
+        )
+    except Exception as e:
+        log(
+            f"[{instance_id}] Redis feature materialization failed "
+            f"user={event.user_id} (history kept): {e}"
+        )
 
 
 async def run_consumer() -> None:
@@ -103,7 +133,8 @@ async def run_consumer() -> None:
                 log(
                     f"[{instance_id}] Kafka consumer started "
                     f"(topic={settings.kafka_topic}, "
-                    f"group={settings.kafka_consumer_group})"
+                    f"group={settings.kafka_consumer_group}, "
+                    f"dlq={settings.kafka_dlq_topic})"
                 )
 
                 async for message in consumer:
@@ -116,6 +147,7 @@ async def run_consumer() -> None:
                         )
                         event = UserInteractionEvent.model_validate(record)
                     except Exception as e:
+                        # Poison / non-Avro: skip (auto-commit advances). Not infinite retry.
                         log(
                             f"[{instance_id}] skip non-Avro/invalid message "
                             f"partition={message.partition} "
@@ -131,13 +163,7 @@ async def run_consumer() -> None:
                         f"timestamp={event.timestamp}"
                     )
 
-                    try:
-                        await process_event(event, instance_id)
-                    except Exception as e:
-                        log(
-                            f"[{instance_id}] event pipeline failed "
-                            f"user={event.user_id}: {e}"
-                        )
+                    await process_event(event, instance_id)
             except Exception as e:
                 log(f"[{instance_id}] Kafka consumer waiting for broker: {e}")
                 await asyncio.sleep(5)

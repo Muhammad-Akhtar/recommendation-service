@@ -75,3 +75,20 @@ RECOMMENDATIONS_CLICKED = Counter(
     "Clicks on items previously returned as recommendations",
     ["model_version"],
 )
+
+RETRIES_TOTAL = Counter(
+    "resilience_retries_total",
+    "Transient-error retries with backoff",
+    ["operation"],
+)
+
+CIRCUIT_BREAKER_OPEN = Counter(
+    "circuit_breaker_opened_total",
+    "Times a circuit breaker transitioned to open",
+    ["name"],
+)
+
+DLQ_MESSAGES_TOTAL = Counter(
+    "kafka_dlq_messages_total",
+    "Events published to the dead-letter topic after durable-write retries failed",
+)

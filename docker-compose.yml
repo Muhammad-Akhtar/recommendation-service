@@ -64,13 +64,18 @@ services:
         set -e
         BOOTSTRAP=kafka:29092
         TOPIC=user-interactions
+        DLQ=user-interactions-dlq
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
           --create --if-not-exists --topic $$TOPIC --partitions 3 --replication-factor 1
         # Increase if an older topic had fewer partitions; ignore "already has N" errors.
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
           --alter --topic $$TOPIC --partitions 3 || true
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
+          --create --if-not-exists --topic $$DLQ --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
           --describe --topic $$TOPIC
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
+          --describe --topic $$DLQ
     restart: "no"
 
   # Task 17 — Apicurio Registry (small image; Confluent-compatible Avro API)

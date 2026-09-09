@@ -6,6 +6,7 @@ import time
 
 import redis.asyncio as redis
 
+from .config import get_settings
 from .database import get_pool
 from .feature_store import get_user_features
 from .logging_config import get_logger
@@ -20,6 +21,7 @@ from .model_quality import record_recommendations_served
 from .model_registry import get_model
 from .prediction_logger import build_prediction_log, log_prediction
 from .recommendation_repository import get_recommendation_items
+from .resilience import call_with_circuit, get_redis_breaker, retry_async
 from .schemas import RecommendationResponse
 from .tracing import get_tracer
 
@@ -36,23 +38,37 @@ async def generate_recommendations(
     """
     Orchestrate inference without putting SQL or Redis details in the model:
 
-      1. Online features from Redis
-      2. Candidate items from PostgreSQL
+      1. Online features from Redis (circuit-breaker protected)
+      2. Candidate items from PostgreSQL (short retry on transient errors)
       3. Model ranks features + candidates
       4. Log prediction + quality impressions (monitoring; not drift)
     """
+    settings = get_settings()
     with tracer.start_as_current_span("generate_recommendations") as span:
         span.set_attribute("user.id", user_id)
         span.set_attribute("model.version", model_version)
 
         with tracer.start_as_current_span("redis_get_features"):
-            features = await get_user_features(user_id, redis_client)
+            features = await call_with_circuit(
+                get_redis_breaker(),
+                lambda: get_user_features(user_id, redis_client),
+                operation="features_get",
+            )
 
         try:
             with tracer.start_as_current_span("postgres_get_candidates"):
-                pool = get_pool()
-                async with pool.acquire() as connection:
-                    candidates = await get_recommendation_items(connection, limit=20)
+
+                async def _fetch_candidates():
+                    pool = get_pool()
+                    async with pool.acquire() as connection:
+                        return await get_recommendation_items(connection, limit=20)
+
+                candidates = await retry_async(
+                    _fetch_candidates,
+                    attempts=settings.postgres_fetch_attempts,
+                    base_delay=settings.retry_base_delay_seconds,
+                    operation="postgres_get_candidates",
+                )
         except Exception:
             POSTGRES_FAILURES.labels(operation="get_candidates").inc()
             logger.warning(

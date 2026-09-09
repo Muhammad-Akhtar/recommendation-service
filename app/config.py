@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     drift_purchase_baseline: float = 2.0
     drift_threshold: float = 0.5
 
+    # Resilience (retry / circuit breaker / DLQ)
+    kafka_publish_attempts: int = 2
+    postgres_fetch_attempts: int = 2
+    retry_base_delay_seconds: float = 0.05
+    redis_circuit_failure_threshold: int = 3
+    redis_circuit_recovery_seconds: float = 30.0
+    consumer_pg_attempts: int = 3
+    kafka_dlq_topic: str = "user-interactions-dlq"
+
 
 @lru_cache
 def get_settings() -> Settings:

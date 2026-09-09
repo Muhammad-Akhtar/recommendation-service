@@ -214,14 +214,19 @@ Task 25 — Final production architecture
 
 ## Current project architecture
 
-Currently:
-
+```text
 Client
-→ FastAPI
-→ Redis
-→ Recommendation Store
-→ Popular/Trending fallback
+  → Load Balancer / port-forward (local)
+  → Kubernetes Service + HPA (optional)  OR  Docker Compose `app`
+  → FastAPI (stateless replicas)
+       ├── Redis — response cache + online features
+       ├── PostgreSQL — candidates, per-user store, user_events
+       ├── Kafka + Schema Registry — interactions → consumer → PG + Redis features
+       └── Model v1/v2 — ranking only (no direct DB/Redis I/O)
+  → Observability: structured logs, /metrics, OTEL spans, model CTR/drift helpers
+  → CI: GitHub Actions (pytest + Docker build)
+```
 
-The service is containerized and managed locally with Docker Compose.
+Full diagrams, sync/async flows, and interview Q&A: [`system_architecture.md`](system_architecture.md).
 
-Continue from **Task 8**, not Task 1.
+Continue from **Task 8**, not Task 1. (Roadmap above lists Tasks 9–25.)
