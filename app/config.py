@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Active recommendation model version (Task 19)
     model_version: str = "v1"
 
+    # Deploy / release identity (Task 23 canary) — distinct from MODEL_VERSION
+    service_version: str = "v1"
+
     # Observability (Task 21)
     log_level: str = "INFO"
     otel_service_name: str = "recommendation-service"

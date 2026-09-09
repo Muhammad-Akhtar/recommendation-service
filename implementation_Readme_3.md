@@ -4,7 +4,8 @@ This file continues from [`implementation_Readme_2.md`](implementation_Readme_2.
 
 - Part 1 → Tasks 1–8 → [`implementation_Readme.md`](implementation_Readme.md)
 - Part 2 → Tasks 9–16 → [`implementation_Readme_2.md`](implementation_Readme_2.md)
-- **Part 3 → Task 17 onward** (Schema Registry, feature store, …)
+- **Part 3 → Tasks 17–22** (Schema Registry → model monitoring)
+- Part 4 → Task 23 onward → [`implementation_Readme_4.md`](implementation_Readme_4.md)
 
 ---
 

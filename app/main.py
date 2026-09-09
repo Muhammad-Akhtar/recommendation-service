@@ -82,7 +82,10 @@ def _cache_key(user_id: int) -> str:
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     """Liveness: process is up. Does not check Redis or Postgres."""
-    return HealthResponse(status="ok")
+    return HealthResponse(
+        status="ok",
+        version=get_settings().service_version,
+    )
 
 
 @app.get("/ready", response_model=ReadyResponse)

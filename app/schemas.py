@@ -20,6 +20,8 @@ class RecommendationResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    # Deploy identity for canary / blue-green (Task 23); not the ML model version
+    version: str | None = None
 
 
 class ReadyResponse(BaseModel):

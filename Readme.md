@@ -6018,3 +6018,828 @@ Task 22 → Model monitoring/drift
 Then **Task 23 — Canary / Blue-Green Deployment + Rollback** becomes much more interesting, because we'll have the monitoring needed to safely introduce a new model version.
 
 Once you've implemented and tested everything above, tell me **"Task 22 done."**
+
+```
+
+
+========================================================================
+
+
+## Task 23 — Canary / Blue-Green Deployment & Rollback
+
+### 🎯 Goal
+
+Learn how production systems safely release a new version without immediately sending 100% of traffic to it.
+
+Your deployment progression will be:
+
+```text
+v1 — currently serving traffic
+        ↓
+deploy v2
+        ↓
+test v2
+        ↓
+send small amount of traffic to v2
+        ↓
+monitor
+        ↓
+healthy → increase traffic
+        ↓
+100% v2
+```
+
+If v2 has problems:
+
+```text
+v2 unhealthy
+   ↓
+rollback
+   ↓
+v1 receives traffic again
+```
+
+---
+
+### Part 1 — Understand the two strategies
+
+#### Canary
+
+Both versions run simultaneously:
+
+```text
+                 ┌──→ v1 (90%)
+Load Balancer ──┤
+                 └──→ v2 (10%)
+```
+
+Gradually:
+
+```text
+90/10
+  ↓
+75/25
+  ↓
+50/50
+  ↓
+10/90
+  ↓
+0/100
+```
+
+The exact percentages aren't important for our local exercise. The important concept is **gradual exposure**.
+
+#### Blue-Green
+
+Two complete environments:
+
+```text
+             Load Balancer
+                  │
+          ┌───────┴───────┐
+          ↓               ↓
+       Blue v1         Green v2
+       ACTIVE          STANDBY
+```
+
+Initially:
+
+```text
+100% → Blue
+```
+
+After validating Green:
+
+```text
+100% → Green
+```
+
+Rollback:
+
+```text
+100% → Blue
+```
+
+**Blue-green is essentially a traffic switch between two environments.**
+
+---
+
+# Part 2 — Our Kubernetes implementation
+
+Since you're already using Kubernetes for the FastAPI service, we'll practice this there.
+
+First, check your current deployment:
+
+```bash
+kubectl get deployments
+kubectl get pods
+kubectl get service
+```
+
+You should have something similar to:
+
+```text
+recommendation-service
+```
+
+Now we're going to create a **v2 image**.
+
+---
+
+## Part 3 — Create model/service v2
+
+Make a small visible change so we can tell v1 and v2 apart.
+
+For example, temporarily change your health endpoint:
+
+```python
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "version": "v2"
+    }
+```
+
+Don't change your actual recommendation logic yet.
+
+Build a separate image:
+
+```bash
+docker build -t recommendation-service:v2 .
+```
+
+Verify:
+
+```bash
+docker images
+```
+
+You should see:
+
+```text
+recommendation-service   v2
+recommendation-service   latest
+```
+
+---
+
+# Part 4 — Create a v2 Kubernetes Deployment
+
+Create:
+
+```text
+k8s/deployment-v2.yaml
+```
+
+The important difference is the labels.
+
+Your existing v1 might have:
+
+```yaml
+labels:
+  app: recommendation-service
+  version: v1
+```
+
+For v2:
+
+```yaml
+labels:
+  app: recommendation-service
+  version: v2
+```
+
+And:
+
+```yaml
+spec:
+  replicas: 1
+```
+
+Use:
+
+```yaml
+image: recommendation-service:v2
+```
+
+### Important concept
+
+The Kubernetes Service should select:
+
+```yaml
+selector:
+  app: recommendation-service
+```
+
+**not:**
+
+```yaml
+selector:
+  app: recommendation-service
+  version: v2
+```
+
+Why?
+
+Because eventually we want the Service to be able to route to both versions.
+
+---
+
+# Part 5 — Deploy v2
+
+Apply:
+
+```bash
+kubectl apply -f k8s/deployment-v2.yaml
+```
+
+Then:
+
+```bash
+kubectl get pods --show-labels
+```
+
+You should now see something like:
+
+```text
+recommendation-service-v1   Running   app=recommendation-service,version=v1
+recommendation-service-v2   Running   app=recommendation-service,version=v2
+```
+
+Now you have:
+
+```text
+                 Service
+                    │
+          ┌─────────┴─────────┐
+          ↓                   ↓
+        v1 pods             v2 pods
+```
+
+---
+
+# Part 6 — Test v2 independently
+
+Before allowing normal traffic to v2, test it directly.
+
+We'll use port forwarding to the v2 deployment:
+
+```bash
+kubectl port-forward deployment/recommendation-service-v2 8001:8000
+```
+
+Then open:
+
+```text
+http://localhost:8001/health
+```
+
+You should see:
+
+```json
+{
+  "status": "healthy",
+  "version": "v2"
+}
+```
+
+This demonstrates an important production practice:
+
+> **Never expose a new version to production traffic before validating it independently.**
+
+---
+
+# Part 7 — Rollback
+
+Now imagine v2 has a serious problem.
+
+For example:
+
+```text
+v2 → high latency
+v2 → errors
+v2 → incorrect recommendations
+```
+
+We want to immediately return to v1.
+
+For our exercise, remove v2:
+
+```bash
+kubectl delete deployment recommendation-service-v2
+```
+
+Check:
+
+```bash
+kubectl get pods
+```
+
+v1 remains running.
+
+That's our first basic rollback.
+
+---
+
+# Part 8 — The production concept
+
+In a real deployment pipeline, rollback usually isn't:
+
+```text
+delete v2
+```
+
+Instead, we have:
+
+```text
+                    Deployment
+                        │
+             ┌──────────┴──────────┐
+             ↓                     ↓
+           v1.4                  v1.5
+          stable                 canary
+             │                     │
+             └────── monitoring ───┘
+                        │
+                 error rate ↑
+                        ↓
+                     ROLLBACK
+                        ↓
+                     v1.4
+```
+
+And your **CI/CD pipeline** from Task 20 eventually becomes:
+
+```text
+Git Push
+   ↓
+Tests
+   ↓
+Docker Build
+   ↓
+Image Registry
+   ↓
+Deploy v2
+   ↓
+Health Checks
+   ↓
+Canary
+   ↓
+Monitor
+   ↓
+ ┌───────────────┐
+ │               │
+Healthy       Unhealthy
+ │               │
+ ↓               ↓
+Increase       Rollback
+Traffic          ↓
+ │              v1
+ ↓
+100% v2
+```
+
+### Task 23 checklist
+
+For now, implement these:
+
+* [ ] Create a visible v2 change
+* [ ] Build `recommendation-service:v2`
+* [ ] Create separate Kubernetes v2 Deployment
+* [ ] Run v1 and v2 simultaneously
+* [ ] Test v2 independently
+* [ ] Understand Service selectors
+* [ ] Remove/rollback v2
+* [ ] Verify v1 continues serving
+
+**Don't worry about implementing sophisticated 10%/90% traffic splitting yet.** We'll first make sure you understand the deployment mechanics.
+
+
+```bash
+
+docker build -t recommendation-service:v1 .
+# with SERVICE_VERSION baked via K8s env is enough; rebuild same Dockerfile for :v2 tag
+docker build -t recommendation-service:v2 .
+kubectl apply -f k8s/deployment.yaml -f k8s/deployment-v2.yaml -f k8s/service.yaml
+kubectl get pods --show-labels
+kubectl port-forward deployment/recommendation-service-v2 8001:8000
+# GET http://localhost:8001/health → version v2
+kubectl delete deployment recommendation-service-v2
+kubectl get pods   # only v1 remains
+.\.venv\Scripts\python -m pytest -q
+```
+
+
+=======================================================
+
+## Task 23 Clarification
+
+
+Exactly — **in a real production setup, you should NOT create `deployment-v2.yaml`, then `deployment-v3.yaml`, then `deployment-v4.yaml` manually every time.**
+
+That was only an educational exercise to help you understand what a second version looks like.
+
+### What happens in real life?
+
+You normally have **one Deployment definition**:
+
+```text
+k8s/
+├── deployment.yaml
+└── service.yaml
+```
+
+The version changes through the **container image tag**.
+
+For example:
+
+```yaml
+image: recommendation-service:v1
+```
+
+Then v2:
+
+```yaml
+image: recommendation-service:v2
+```
+
+Then v3:
+
+```yaml
+image: recommendation-service:v3
+```
+
+You don't create a new YAML file for every version.
+
+---
+
+## But how does Kubernetes release v3 safely?
+
+This is where **rolling deployments, canary deployments, and blue-green deployments** come in.
+
+### Normal Kubernetes rolling deployment
+
+Suppose you're running:
+
+```text
+3 × v1 pods
+```
+
+You change the image:
+
+```text
+v1 → v2
+```
+
+Kubernetes gradually replaces the pods:
+
+```text
+v1  v1  v1
+ ↓
+v2  v1  v1
+ ↓
+v2  v2  v1
+ ↓
+v2  v2  v2
+```
+
+Then when v3 comes:
+
+```text
+v2  v2  v2
+ ↓
+v3  v2  v2
+ ↓
+v3  v3  v2
+ ↓
+v3  v3  v3
+```
+
+Same Deployment.
+
+---
+
+## So why did I ask you to create `deployment-v2.yaml`?
+
+Because we're **learning the concept manually first**.
+
+I wanted you to physically see:
+
+```text
+v1 Deployment
+       +
+v2 Deployment
+       ↓
+two versions running
+```
+
+That's useful for understanding blue-green/canary architecture.
+
+But **we should not continue creating one YAML file per version.**
+
+---
+
+# How this eventually works with CI/CD
+
+Your workflow from Task 20 will eventually look more like:
+
+```text
+Developer
+   ↓
+git push
+   ↓
+CI
+ ├── pytest
+ ├── lint
+ └── Docker build
+       ↓
+recommendation-service:v3
+       ↓
+Container Registry
+       ↓
+CD
+       ↓
+Kubernetes Deployment
+       ↓
+Canary / Rolling / Blue-Green
+       ↓
+Monitor
+       ↓
+Healthy?
+  ┌───────┴───────┐
+ YES              NO
+  ↓                ↓
+100% v3         Rollback
+                   ↓
+                  v2
+```
+
+And rollback can be extremely convenient with Kubernetes:
+
+```bash
+kubectl rollout undo deployment recommendation-service
+```
+
+You can inspect rollout history:
+
+```bash
+kubectl rollout history deployment recommendation-service
+```
+
+And check status:
+
+```bash
+kubectl rollout status deployment recommendation-service
+```
+
+---
+
+### One important distinction
+
+**Rolling deployment ≠ Canary ≠ Blue-Green**
+
+They're different strategies:
+
+| Strategy   | Basic idea                                            |
+| ---------- | ----------------------------------------------------- |
+| Rolling    | Gradually replace old pods with new pods              |
+| Canary     | Send a small percentage of traffic to new version     |
+| Blue-Green | Keep two environments and switch traffic between them |
+
+For **Task 23**, we're learning Canary/Blue-Green, so I had you create v2 separately to make the concept visible.
+
+But after we finish Task 23, your normal Kubernetes workflow should be **one Deployment manifest + new image versions**, not a new YAML file for every release.
+
+So your question is absolutely correct — **you should not have to manually create `deployment-v3.yaml` every time.**
+
+
+
+======================================================
+
+
+Excellent. **Task 23 — Canary / Blue-Green Deployment & Rollback: ✅ DONE**
+
+You now understand:
+
+* Rolling vs Canary vs Blue-Green deployments
+* Running multiple application versions
+* Kubernetes Deployment vs Service
+* Safe release of a new version
+* Independent validation of a new version
+* Rollback using Kubernetes
+* Why you don't create `deployment-v3.yaml`, `deployment-v4.yaml`, etc. for every release
+* How CI/CD eventually automates the whole process
+
+### 🚀 Next: Task 24 — Horizontal Scaling & Load Testing
+
+We'll make the recommendation service behave more like a real production service:
+
+```text
+                 Load
+                  ↓
+          Kubernetes Service
+                  ↓
+       ┌──────────┼──────────┐
+       ↓          ↓          ↓
+     FastAPI    FastAPI    FastAPI
+      Pod 1      Pod 2      Pod 3
+       │          │          │
+       └──────────┼──────────┘
+                  ↓
+          Redis / PostgreSQL
+```
+
+We'll cover:
+
+1. Why horizontal scaling works
+2. Load testing the API
+3. Identifying bottlenecks
+4. Kubernetes replica scaling
+5. CPU/memory resource requests and limits
+6. Horizontal Pod Autoscaler (HPA)
+7. Understanding when **3 replicas aren't enough**
+8. Basic throughput and latency measurements
+
+This will connect your Kubernetes knowledge with the **billion-user scalability** concepts we're building toward.
+
+
+=================
+
+
+Yes — **you already implemented the basic horizontal scaling in Task 13** when you changed:
+
+```yaml
+replicas: 1
+```
+
+to:
+
+```yaml
+replicas: 3
+```
+
+So Task 24 shouldn't repeat that. Your understanding is correct: **the purpose now is to test the application under load and observe when/how scaling should happen.**
+
+### What Task 24 should actually teach
+
+Think of it as:
+
+```text
+                Load Test
+                   ↓
+             Kubernetes Service
+                   ↓
+        ┌──────────┼──────────┐
+        ↓          ↓          ↓
+      Pod 1      Pod 2      Pod 3
+        │          │          │
+        └──────────┼──────────┘
+                   ↓
+             Measure:
+          ├── Requests/sec
+          ├── Latency
+          ├── Errors
+          └── CPU / Memory
+```
+
+Then we ask:
+
+> **What happens when 3 pods aren't enough?**
+
+There are two different things:
+
+### 1. Manual scaling
+
+You already did this:
+
+```bash
+kubectl scale deployment recommendation-service --replicas=5
+```
+
+Now Kubernetes runs 5 pods.
+
+This is useful when **you know** you need more capacity.
+
+### 2. Automatic scaling — HPA
+
+This is the important new part.
+
+Instead of you doing:
+
+```text
+Load increases
+     ↓
+You notice it
+     ↓
+You manually increase replicas
+```
+
+we want:
+
+```text
+Load increases
+     ↓
+CPU increases
+     ↓
+HPA detects threshold
+     ↓
+3 pods → 5 pods
+     ↓
+Load decreases
+     ↓
+5 pods → 3 pods
+```
+
+That's **Horizontal Pod Autoscaling**.
+
+---
+
+## So I would modify Task 24
+
+Rather than spending the task re-learning replicas, we'll do:
+
+**Task 24 — Load Testing + Kubernetes HPA**
+
+### Part A — Load test
+
+Generate traffic against your FastAPI service.
+
+We'll measure:
+
+* requests per second
+* average latency
+* p95 latency
+* errors
+* CPU utilization
+
+### Part B — Establish baseline
+
+For example:
+
+```text
+3 pods
+100 requests/sec
+CPU: 35%
+p95: 80ms
+```
+
+Then increase traffic.
+
+### Part C — HPA
+
+Configure something like:
+
+```text
+minReplicas: 3
+maxReplicas: 10
+targetCPUUtilization: 70%
+```
+
+Then generate enough traffic to push CPU above the target.
+
+Kubernetes should automatically increase the pods.
+
+### Part D — Watch it happen
+
+You'll use:
+
+```bash
+kubectl get hpa
+```
+
+and:
+
+```bash
+kubectl get pods -w
+```
+
+So you'll actually see:
+
+```text
+3 pods
+ ↓
+4 pods
+ ↓
+5 pods
+ ↓
+...
+```
+
+Then stop the load and observe scale-down.
+
+---
+
+### One important thing
+
+**Don't manually increase replicas during the HPA test.**
+
+The point is to let Kubernetes make the decision.
+
+So yes, your intuition was right:
+
+> **Task 13 = manually scale replicas.**
+> **Task 24 = prove the need for scaling with load testing, then automate scaling with HPA.**
+
+That's a much better progression for your project.
+

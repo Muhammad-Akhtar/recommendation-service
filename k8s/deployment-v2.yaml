@@ -1,28 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: recommendation-service-v1
+  name: recommendation-service-v2
   labels:
     app: recommendation-service
-    version: v1
+    version: v2
 spec:
   replicas: 1
 
   selector:
     matchLabels:
       app: recommendation-service
-      version: v1
+      version: v2
 
   template:
     metadata:
       labels:
         app: recommendation-service
-        version: v1
+        version: v2
 
     spec:
       containers:
         - name: recommendation-service
-          image: recommendation-service:v1
+          image: recommendation-service:v2
           imagePullPolicy: Never
 
           ports:
@@ -30,7 +30,7 @@ spec:
 
           env:
             - name: SERVICE_VERSION
-              value: "v1"
+              value: "v2"
 
           livenessProbe:
             httpGet:
