@@ -35,3 +35,17 @@ class InteractionPublishResponse(BaseModel):
     status: str
     topic: str
     event: UserInteractionEvent
+
+
+class ModelQualityVersionStats(BaseModel):
+    model_version: str
+    recommendations_served: float
+    recommendations_clicked: float
+    ctr: float
+
+
+class ModelQualityResponse(BaseModel):
+    """Read-only model-quality snapshot for monitoring / QA (Task 22)."""
+
+    versions: list[ModelQualityVersionStats]
+    best_by_ctr: str | None = None

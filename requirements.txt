@@ -8,3 +8,7 @@ httpx==0.28.1
 asyncpg==0.30.0
 aiokafka==0.12.0
 fastavro==1.12.2
+structlog==25.4.0
+prometheus-client==0.22.1
+opentelemetry-api==1.36.0
+opentelemetry-sdk==1.36.0

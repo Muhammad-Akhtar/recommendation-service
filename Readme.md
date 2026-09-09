@@ -5397,5 +5397,624 @@ You should be able to explain:
 
 > **What happens when a developer pushes broken code?**
 
-Once you've completed those, tell me **"Task 20 done"** and we'll move to **Task 21 — Production Observability: structured logging, metrics, request IDs, and OpenTelemetry**.
 
+================================================================================================
+
+
+Excellent. **Task 20 — CI/CD is done.** ✅
+
+We're now at the point where the project has the core data and serving pieces:
+
+```text
+Kafka
+  ↓
+PostgreSQL ── historical data / candidates
+  ↓
+Feature processing
+  ↓
+Redis ── online features
+  ↓
+Recommendation Service
+  ↓
+Model v1 / v2
+  ↓
+Redis ── recommendation-result cache
+  ↓
+FastAPI response
+```
+
+## Task 21 — Production Observability
+
+Now we'll focus on something very important for a **senior backend/system-design engineer**:
+
+> **How do we know what the system is doing in production, and why a request was slow or failed?**
+
+We'll implement this progressively.
+
+### What we're going to add
+
+#### 1. Structured logging
+
+Instead of:
+
+```python
+print("Redis failed")
+```
+
+we'll have useful structured logs such as:
+
+```json
+{
+  "level": "WARNING",
+  "event": "redis_unavailable",
+  "user_id": 123,
+  "request_id": "abc-123"
+}
+```
+
+---
+
+#### 2. Request ID / correlation ID
+
+Every request gets an ID:
+
+```text
+GET /recommendations/123
+        │
+        │ request_id = abc123
+        ▼
+Recommendation Service
+        │
+        ├── Redis
+        │
+        ├── PostgreSQL
+        │
+        └── Model
+```
+
+All logs related to that request contain:
+
+```text
+request_id=abc123
+```
+
+So if a user reports:
+
+> "Recommendation API was slow."
+
+you can search logs for `abc123` and follow the entire request.
+
+---
+
+#### 3. Basic metrics
+
+We'll eventually track things like:
+
+```text
+recommendation_requests_total
+recommendation_latency_seconds
+redis_hits_total
+redis_misses_total
+redis_failures_total
+postgres_failures_total
+model_predictions_total
+```
+
+This lets you answer questions such as:
+
+> Are Redis failures increasing?
+
+> What's our p95 recommendation latency?
+
+> What percentage of requests are cache hits?
+
+---
+
+#### 4. OpenTelemetry
+
+Then we'll introduce tracing:
+
+```text
+Request
+ │
+ └── Trace
+      │
+      ├── Redis lookup       4ms
+      ├── PostgreSQL query   12ms
+      ├── Model inference    8ms
+      └── Redis cache write  2ms
+```
+
+This is particularly useful because our architecture now has several components.
+
+---
+
+### Task 21 progression
+
+Don't implement everything at once.
+
+We'll do:
+
+```text
+Step 1 → structured logging
+Step 2 → request/correlation ID
+Step 3 → useful application events
+Step 4 → metrics
+Step 5 → OpenTelemetry tracing
+Step 6 → inspect/debug a real request
+Step 7 → tests
+```
+
+And we'll deliberately create a Redis failure and observe what the logs/metrics show.
+
+**Task 21 is about observability, not changing recommendation logic.**
+
+Once you've completed it, tell me **"Task 21 done"**, and we'll move to **Task 22 — ML model monitoring, regression detection, and data/model drift**.
+
+
+================================================================================================
+
+Great. **Task 21 — Observability is done.** ✅
+
+Now we have enough infrastructure to start treating the recommendation system like a real ML-backed production service.
+
+# Task 22 — Model Monitoring & Drift Detection
+
+The goal of Task 22 is to answer:
+
+> **"How do we know if our recommendation model is still performing correctly after deployment?"**
+
+We're going to start with **model-quality monitoring**, not complicated ML mathematics.
+
+---
+
+## What we're adding
+
+Our current flow is roughly:
+
+```text
+User
+ ↓
+FastAPI
+ ↓
+Redis Features ──────┐
+                     │
+PostgreSQL Candidates│
+                     │
+                     ▼
+                  Model v1/v2
+                     │
+                     ▼
+              Recommendations
+```
+
+Now we'll capture information about each prediction:
+
+```text
+Model prediction
+      │
+      ├── model_version
+      ├── user_id
+      ├── features used
+      ├── recommendations returned
+      └── timestamp
+```
+
+This gives us the foundation for monitoring.
+
+---
+
+# Step 1 — Create a prediction log
+
+Create something like:
+
+```text
+app/
+├── model.py
+├── model_registry.py
+├── service.py
+├── prediction_logger.py   ← new
+└── ...
+```
+
+Create a Pydantic model:
+
+```python
+class PredictionLog(BaseModel):
+    user_id: int
+    model_version: str
+    recommendation_count: int
+    click_count: int
+    purchase_count: int
+    timestamp: datetime
+```
+
+Don't store the entire feature object blindly. Start with the important fields.
+
+---
+
+# Step 2 — Log every prediction
+
+After the model produces recommendations:
+
+```python
+recommendations = model.predict(
+    features,
+    candidates
+)
+```
+
+create a prediction log:
+
+```python
+prediction = PredictionLog(
+    user_id=user_id,
+    model_version=model.version,
+    recommendation_count=len(recommendations),
+    click_count=features.click_count,
+    purchase_count=features.purchase_count,
+    timestamp=datetime.utcnow(),
+)
+```
+
+Then send it through your logger.
+
+Because you completed Task 21, you should already have structured logging available.
+
+You want logs that allow you to answer:
+
+```text
+How many predictions did v1 make?
+How many did v2 make?
+How many recommendations were returned?
+What kind of users were being served?
+```
+
+---
+
+# Step 3 — Add model metrics
+
+Now add counters for:
+
+```text
+model_predictions_total
+```
+
+with a model-version label:
+
+```text
+model_predictions_total{model_version="v1"}
+model_predictions_total{model_version="v2"}
+```
+
+Also add:
+
+```text
+recommendation_count
+```
+
+and preferably:
+
+```text
+model_prediction_latency
+```
+
+So your monitoring becomes:
+
+```text
+             Model Monitoring
+
+        ┌───────────────────────┐
+        │ Predictions            │
+        │ v1 = 10,000            │
+        │ v2 = 12,000            │
+        ├───────────────────────┤
+        │ Latency                │
+        │ p50 = 8ms              │
+        │ p95 = 20ms             │
+        ├───────────────────────┤
+        │ Errors                 │
+        │ v1 = 0.1%              │
+        │ v2 = 0.3%              │
+        └───────────────────────┘
+```
+
+---
+
+# Step 4 — Introduce a simple drift detector
+
+Don't build a complicated statistical ML system yet.
+
+We'll start with a very simple detector.
+
+Suppose historically we normally see:
+
+```text
+average click_count = 10
+```
+
+But suddenly:
+
+```text
+average click_count = 100
+```
+
+Something may have changed.
+
+Create:
+
+```text
+app/
+└── drift.py
+```
+
+Implement a simple function:
+
+```python
+def detect_drift(
+    current_average: float,
+    baseline_average: float,
+    threshold: float = 0.5,
+) -> bool:
+    if baseline_average == 0:
+        return False
+
+    difference = abs(current_average - baseline_average)
+    change = difference / baseline_average
+
+    return change > threshold
+```
+
+Example:
+
+```python
+detect_drift(12, 10)
+```
+
+returns:
+
+```text
+False
+```
+
+because the change is only 20%.
+
+But:
+
+```python
+detect_drift(20, 10)
+```
+
+returns:
+
+```text
+True
+```
+
+because the change is 100%.
+
+---
+
+# Step 5 — Understand what "drift" means
+
+There are actually several different concepts.
+
+### Data drift
+
+Input data changes.
+
+```text
+Before:
+
+click_count
+5
+7
+10
+8
+6
+
+After:
+
+click_count
+40
+80
+100
+60
+90
+```
+
+The distribution changed.
+
+---
+
+### Concept drift
+
+The relationship between inputs and desired outcomes changes.
+
+For example:
+
+```text
+Previously:
+
+lots of clicks → likely purchase
+```
+
+Later:
+
+```text
+lots of clicks → no longer predicts purchase
+```
+
+The model's assumptions become less accurate.
+
+---
+
+### Model drift / performance degradation
+
+The model itself may continue running perfectly but its results become worse.
+
+For example:
+
+```text
+v2
+
+CTR:
+Before → 8%
+After  → 2%
+```
+
+The application isn't technically broken.
+
+But the model isn't performing well anymore.
+
+---
+
+# Step 6 — Add a model-quality signal
+
+We don't have real CTR/purchase feedback yet, so we'll simulate the feedback.
+
+When a user clicks a recommended item, we'll eventually have:
+
+```text
+recommendation shown
+       ↓
+user clicked
+       ↓
+feedback event
+```
+
+For this task, track:
+
+```text
+recommendations_served
+recommendations_clicked
+```
+
+Then calculate:
+
+```text
+CTR = clicks / recommendations_served
+```
+
+For example:
+
+```text
+10,000 recommendations
+500 clicks
+
+CTR = 500 / 10,000
+    = 5%
+```
+
+This becomes a basic model-quality metric.
+
+---
+
+# Step 7 — Compare model versions
+
+Now our model versioning becomes much more meaningful.
+
+Imagine:
+
+```text
+Model    Requests    CTR
+
+v1       50,000      4.2%
+v2       50,000      6.1%
+```
+
+You can now say:
+
+> "v2 performs better than v1 based on observed recommendation CTR."
+
+This will become extremely important when we eventually introduce **canary deployment**.
+
+---
+
+# Task 22 checklist
+
+### Prediction monitoring
+
+* [ ] Create `PredictionLog`
+* [ ] Log every prediction
+* [ ] Record model version
+* [ ] Record useful feature information
+* [ ] Record recommendation count
+* [ ] Add prediction metrics
+* [ ] Track model latency
+
+### Drift
+
+* [ ] Create `drift.py`
+* [ ] Implement simple baseline comparison
+* [ ] Test normal change
+* [ ] Test significant change
+* [ ] Understand data drift
+* [ ] Understand concept drift
+* [ ] Understand model performance degradation
+
+### Model quality
+
+* [ ] Track recommendations served
+* [ ] Track recommendation clicks
+* [ ] Calculate CTR
+* [ ] Compare v1 vs v2
+
+---
+
+## One important architectural point
+
+Don't put drift detection **inside the request path**.
+
+Don't do:
+
+```text
+User Request
+ ↓
+Model
+ ↓
+Calculate drift
+ ↓
+Response
+```
+
+That adds unnecessary latency.
+
+Instead:
+
+```text
+                    Request
+                       │
+                       ▼
+                     Model
+                       │
+                       ▼
+                    Response
+                       │
+                       └──────► Metrics / Logs
+                                      │
+                                      ▼
+                              Monitoring process
+                                      │
+                                      ▼
+                                Drift detection
+```
+
+The recommendation API should remain focused on serving recommendations quickly.
+
+---
+
+### What comes next
+
+After Task 22, we'll have:
+
+```text
+Task 19 → Model serving/versioning
+Task 20 → CI/CD
+Task 21 → Observability
+Task 22 → Model monitoring/drift
+```
+
+Then **Task 23 — Canary / Blue-Green Deployment + Rollback** becomes much more interesting, because we'll have the monitoring needed to safely introduce a new model version.
+
+Once you've implemented and tested everything above, tell me **"Task 22 done."**

@@ -1,6 +1,9 @@
 # Manual Testing Guide (QA)
 
-Simple end-to-end checks for a QA intern: **simulate interactions → see Kafka → inspect Postgres/Redis → see how the model ranks**.
+Simple end-to-end checks for a QA intern:
+
+- **Part A** — simulate interactions → Kafka → Postgres/Redis → model ranking  
+- **Part B** — observability & model monitoring (Task 21–22): read JSON logs, force miss/hit/Redis-down, CTR
 
 Base URL: `http://localhost:8000`
 
@@ -489,3 +492,411 @@ Invoke-RestMethod "http://localhost:8000/recommendations/$user"
 ---
 
 **One-line summary for QA:** Post interactions → wait → confirm Postgres history and Redis features → clear cache → call recommendations → confirm the ranked list and `model_version`.
+
+---
+
+# Part B — Observability & Model Monitoring (Task 21 + 22)
+
+Use this when a “bug” is really: *slow API*, *wrong fallback*, *model not running*, or *CTR looks bad*.  
+You will **regenerate cases on purpose**, then **follow JSON logs + metrics** like production on-call.
+
+```text
+API call  ──►  X-Request-ID (correlation)
+                 │
+                 ├── Application logs (cache / redis / fallback)
+                 ├── Model logs (prediction_logged)
+                 └── Metrics (/metrics, /monitoring/model-quality)
+```
+
+---
+
+## 14. How to watch logs (always start here)
+
+Open a **second terminal** and stream the API container:
+
+```powershell
+docker compose logs -f app
+```
+
+Optional: only JSON-looking lines, or a known request id later:
+
+```powershell
+docker compose logs -f app | Select-String "event|request_id|prediction"
+```
+
+Each useful line is **one JSON object**. Important fields:
+
+| Field | Meaning |
+| --- | --- |
+| `event` | What happened (`cache_hit`, `prediction_logged`, …) |
+| `request_id` | Ties every log line of **one** HTTP request together |
+| `user_id` | Which user |
+| `level` | `info` / `warning` |
+| `source` | Where the recommendation came from (`cache`, `model`, `postgres-store`, `popular-fallback`) |
+| `model_version` | `v1` / `v2` / fallback labels |
+| `latency_seconds` | How long that request took |
+
+**Tip:** Always send your own request id so you can search it:
+
+```powershell
+$rid = "qa-case-$(Get-Date -Format 'HHmmss')"
+Invoke-WebRequest "http://localhost:8000/recommendations/9101" `
+  -Headers @{ "X-Request-ID" = $rid } | Out-Null
+Write-Host "Search logs for: $rid"
+docker compose logs app --tail=200 | Select-String $rid
+```
+
+Response header should echo the same id:
+
+```powershell
+(Invoke-WebRequest "http://localhost:8000/health" -Headers @{ "X-Request-ID" = "qa-fixed-1" }).Headers["X-Request-ID"]
+# → qa-fixed-1
+```
+
+---
+
+## 15. Log event cheat sheet (what to expect)
+
+### Application path (Task 21)
+
+| `event` | When you see it | Level |
+| --- | --- | --- |
+| `cache_miss` | First recs call (or after cache delete) | info |
+| `cache_hit` | Second call within TTL (~120s) | info |
+| `redis_unavailable` | Redis stopped / broken | warning |
+| `model_path_unavailable` | Model/features/candidates failed | warning |
+| `postgres_store_hit` | Fell back to Task-14 `recommendations` table | info |
+| `postgres_unavailable` | Postgres store also failed | warning |
+| `popular_fallback` | Last resort hardcoded list | info |
+| `recommendation_served` | **Always** at end of recs request (source + latency) | info |
+| `interaction_published` | After `POST /interactions` | info |
+
+### Model path (Task 22)
+
+| `event` | When you see it | Level |
+| --- | --- | --- |
+| `prediction_logged` | Model actually ran (`predict`) | info |
+| `recommendation_clicked` | Click matched a previously recommended item | info |
+
+`prediction_logged` typically includes: `user_id`, `model_version`, `recommendation_count`, `click_count`, `purchase_count`, `last_item_id`, `recommendations`, `timestamp`.
+
+**Rule of thumb**
+
+- Cache hit → you should **not** see `prediction_logged` for that request.  
+- Cache miss + healthy stack → `cache_miss` → `prediction_logged` → `recommendation_served` with `source=model`.
+
+---
+
+## 16. Case A — Happy path: miss → model → hit (application + model)
+
+**Goal:** See both application and model logs for one user.
+
+```powershell
+$user = 9101
+$rid1 = "qa-miss-$user"
+$rid2 = "qa-hit-$user"
+
+# Force model path
+docker exec recommendation-redis redis-cli DEL "cache:recommendations:$user"
+
+# 1) Cache MISS + MODEL
+Invoke-WebRequest "http://localhost:8000/recommendations/$user" `
+  -Headers @{ "X-Request-ID" = $rid1 } | Select-Object -ExpandProperty Content
+
+# 2) Cache HIT (no model)
+Invoke-WebRequest "http://localhost:8000/recommendations/$user" `
+  -Headers @{ "X-Request-ID" = $rid2 } | Select-Object -ExpandProperty Content
+
+docker compose logs app --tail=300 | Select-String "$rid1|$rid2|prediction_logged"
+```
+
+**Expect for `$rid1` (miss)**
+
+```text
+cache_miss
+prediction_logged          ← MODEL ran
+recommendation_served      source=model, model_version=v1
+```
+
+Example `prediction_logged` shape:
+
+```json
+{
+  "event": "prediction_logged",
+  "user_id": 9101,
+  "model_version": "v1",
+  "recommendation_count": 5,
+  "click_count": 0,
+  "purchase_count": 0,
+  "recommendations": [10, 20, 30, 40, 50],
+  "request_id": "qa-miss-9101",
+  "level": "info"
+}
+```
+
+**Expect for `$rid2` (hit)**
+
+```text
+cache_hit
+recommendation_served      source=cache
+```
+
+No new `prediction_logged` on the hit request.
+
+---
+
+## 17. Case B — User with features: prove model saw real inputs
+
+**Goal:** Show that prediction logs reflect Redis features (useful when “model ignores user”).
+
+```powershell
+$user = 9102
+
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions -ContentType "application/json" `
+  -Body "{`"user_id`":$user,`"item_id`":42,`"event_type`":`"click`"}"
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions -ContentType "application/json" `
+  -Body "{`"user_id`":$user,`"item_id`":10,`"event_type`":`"purchase`"}"
+
+Start-Sleep -Seconds 2
+Invoke-RestMethod "http://localhost:8000/features/$user"
+# Expect click_count=1, purchase_count=1, last_item_id=10
+
+docker exec recommendation-redis redis-cli DEL "cache:recommendations:$user"
+$rid = "qa-features-$user"
+Invoke-WebRequest "http://localhost:8000/recommendations/$user" -Headers @{ "X-Request-ID" = $rid } | Out-Null
+
+docker compose logs app --tail=200 | Select-String $rid
+```
+
+**Expect in `prediction_logged`:** `click_count` / `purchase_count` / `last_item_id` match `/features/{user}`.
+
+That is how QA proves: **feature store → model input → logged prediction**.
+
+---
+
+## 18. Case C — Real-world: “API was slow / something failed” (Redis down)
+
+**Goal:** Simulate production Redis outage and read warnings + fallback.
+
+```powershell
+$user = 9103
+$rid = "qa-redis-down-$user"
+
+docker compose stop redis
+Start-Sleep -Seconds 2
+
+try {
+  Invoke-WebRequest "http://localhost:8000/recommendations/$user" `
+    -Headers @{ "X-Request-ID" = $rid } | Select-Object StatusCode, Content
+} catch {
+  $_.Exception.Message
+}
+
+docker compose logs app --tail=150 | Select-String $rid
+
+# Recover
+docker compose start redis
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://localhost:8000/ready
+```
+
+**Expect log sequence (approx.)**
+
+```text
+redis_unavailable          operation=cache_get   (warning)
+… fallback path …
+recommendation_served      source=postgres-store  OR  popular-fallback
+```
+
+You usually will **not** see `prediction_logged` (model path needs Redis features).
+
+**Also check metrics after recovery:**
+
+```powershell
+(Invoke-RestMethod http://localhost:8000/metrics) -split "`n" |
+  Select-String "redis_failures_total|recommendation_requests_total"
+```
+
+`redis_failures_total{operation="cache_get"}` should have increased.
+
+**QA story you can write in a bug/ticket:**  
+“With Redis stopped, request `qa-redis-down-9103` logged `redis_unavailable` and served fallback `source=…` instead of hanging.”
+
+---
+
+## 19. Case D — Metrics dashboard lite (no Grafana needed)
+
+```powershell
+# After a few recommendation calls:
+(Invoke-RestMethod http://localhost:8000/metrics) -split "`n" |
+  Select-String "redis_hits_total|redis_misses_total|model_predictions_total|model_prediction_latency|recommendations_served|recommendations_clicked|recommendation_requests_total"
+```
+
+| Metric | What QA learns |
+| --- | --- |
+| `redis_hits_total` vs `redis_misses_total` | Cache effectiveness |
+| `model_predictions_total{model_version="v1"}` | How often model actually ran |
+| `model_prediction_latency_seconds` | Model speed (histogram buckets) |
+| `recommendations_served_total` | Items shown (impressions) |
+| `recommendations_clicked_total` | Attributed clicks on those items |
+| `recommendation_requests_total{source=...}` | Mix of cache / model / fallbacks |
+
+---
+
+## 20. Case E — Model quality / CTR (Task 22) end-to-end
+
+**Goal:** Serve recommendations → click a recommended item → see CTR move.
+
+```powershell
+$user = 9104
+docker exec recommendation-redis redis-cli DEL "cache:recommendations:$user"
+
+# Serve (creates impressions + last_recs in Redis)
+$recs = Invoke-RestMethod "http://localhost:8000/recommendations/$user"
+$recs
+# Pick first recommended id, e.g. 10
+$item = $recs.recommendations[0]
+
+# Click that recommended item (attributed)
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions `
+  -ContentType "application/json" `
+  -Body "{`"user_id`":$user,`"item_id`":$item,`"event_type`":`"click`"}"
+
+# Click something NOT recommended (should NOT count as recommendation click)
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions `
+  -ContentType "application/json" `
+  -Body "{`"user_id`":$user,`"item_id`":99999,`"event_type`":`"click`"}"
+
+Invoke-RestMethod http://localhost:8000/monitoring/model-quality
+docker compose logs app --tail=100 | Select-String "prediction_logged|recommendation_clicked"
+```
+
+**Expect**
+
+- One `prediction_logged` on the GET (if cache was empty).
+- One `recommendation_clicked` for `$item` (matched).
+- No click attribution for `99999`.
+- `/monitoring/model-quality` shows `recommendations_served` ≥ 5 (v1), `recommendations_clicked` ≥ 1, `ctr` = clicked/served.
+
+Example quality response shape:
+
+```json
+{
+  "versions": [
+    {
+      "model_version": "v1",
+      "recommendations_served": 5,
+      "recommendations_clicked": 1,
+      "ctr": 0.2
+    },
+    {
+      "model_version": "v2",
+      "recommendations_served": 0,
+      "recommendations_clicked": 0,
+      "ctr": 0
+    }
+  ],
+  "best_by_ctr": "v1"
+}
+```
+
+**Why this matters:** In canary later (Task 23), QA compares **v1 vs v2 CTR** the same way.
+
+---
+
+## 21. Case F — Offline drift check (not in the API request)
+
+Drift is **not** calculated during `GET /recommendations` (by design — keeps latency low).
+
+QA / monitoring simulation in Python:
+
+```powershell
+docker compose exec app python -c "from app.drift import detect_drift, check_feature_drift; print('20% change', detect_drift(12, 10)); print('100% change', detect_drift(20, 10)); print(check_feature_drift('click_count', [40,80,100,60,90], 10.0))"
+```
+
+**Expect**
+
+```text
+20% change False
+100% change True
+feature=click_count drifted=True ...
+```
+
+**How to connect to logs:** Export `click_count` values from many `prediction_logged` lines over time. If the average jumps vs baseline (config default `DRIFT_CLICK_BASELINE=10`), that is **data drift** — raise it to engineering even if the API still returns 200.
+
+---
+
+## 22. Case G — Compare application vs model responsibility
+
+| Symptom | Look for in logs | Likely layer |
+| --- | --- | --- |
+| Same answer twice, very fast | `cache_hit` only | Application cache |
+| Fresh ranking after DEL cache | `cache_miss` + `prediction_logged` | Model ran |
+| 200 but weird list + `popular-fallback` | `redis_unavailable` / `postgres_unavailable` | Infra / fallbacks |
+| Features wrong in prediction log | Check `/features` + Kafka consumer | Feature pipeline |
+| CTR stuck at 0 | No `recommendation_clicked` — clicks not on recommended ids | QA scenario / attribution |
+| High `latency_seconds` on `recommendation_served` | Check spans if `OTEL_TRACES_EXPORTER=console` | Performance |
+
+Enable console traces temporarily (optional):
+
+```yaml
+# docker-compose.yml → app environment
+- OTEL_TRACES_EXPORTER=console
+```
+
+```powershell
+docker compose up -d --force-recreate app
+docker compose logs -f app
+# Call recommendations — look for span names: redis_cache_lookup, model_predict, …
+```
+
+Set back to `none` when done (less noisy logs).
+
+---
+
+## 23. Mini script — regenerate observability demo (copy/paste)
+
+```powershell
+$user = 9110
+$ridMiss = "demo-miss-$user"
+$ridHit  = "demo-hit-$user"
+
+Write-Host "=== Prepare features ==="
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions -ContentType "application/json" -Body "{`"user_id`":$user,`"item_id`":20,`"event_type`":`"click`"}" | Out-Null
+Start-Sleep -Seconds 2
+
+Write-Host "=== MISS + MODEL (request_id=$ridMiss) ==="
+docker exec recommendation-redis redis-cli DEL "cache:recommendations:$user" | Out-Null
+Invoke-WebRequest "http://localhost:8000/recommendations/$user" -Headers @{ "X-Request-ID" = $ridMiss } | Out-Null
+
+Write-Host "=== HIT (request_id=$ridHit) ==="
+Invoke-WebRequest "http://localhost:8000/recommendations/$user" -Headers @{ "X-Request-ID" = $ridHit } | Out-Null
+
+Write-Host "=== Click recommended item ==="
+$recs = Invoke-RestMethod "http://localhost:8000/recommendations/$user"
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions -ContentType "application/json" -Body "{`"user_id`":$user,`"item_id`":$($recs.recommendations[0]),`"event_type`":`"click`"}" | Out-Null
+
+Write-Host "=== Logs ==="
+docker compose logs app --tail=250 | Select-String "$ridMiss|$ridHit|prediction_logged|recommendation_clicked"
+
+Write-Host "=== Quality ==="
+Invoke-RestMethod http://localhost:8000/monitoring/model-quality
+```
+
+---
+
+## 24. Observability QA checklist
+
+- [ ] Can find one request by `X-Request-ID` across multiple log lines
+- [ ] Cache miss shows `prediction_logged`; cache hit does not
+- [ ] `recommendation_served` always appears with `source` + `latency_seconds`
+- [ ] Redis stop → `redis_unavailable` warning + fallback source
+- [ ] `/metrics` shows hits/misses/predictions moving after calls
+- [ ] Click on recommended item → `recommendation_clicked` + CTR updates
+- [ ] Click on random item → no recommendation click attribution
+- [ ] Offline `detect_drift(20, 10)` is True; `detect_drift(12, 10)` is False
+- [ ] Can explain: application logs vs model (`prediction_logged`) vs quality (`/monitoring/model-quality`)
+
+---
+
+**One-line summary (Task 21/22 QA):** Stamp every call with `X-Request-ID`, force miss/hit/Redis-down cases, then read JSON `event`s — application path for serving/fallbacks, `prediction_logged` for the model, metrics/CTR for whether the model is still “good.”

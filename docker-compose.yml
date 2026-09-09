@@ -125,6 +125,9 @@ services:
       - SCHEMA_REGISTRY_URL=http://schema-registry:8080/apis/ccompat/v7
       - KAFKA_VALUE_SUBJECT=user-interactions-value
       - MODEL_VERSION=v1
+      - LOG_LEVEL=INFO
+      - OTEL_SERVICE_NAME=recommendation-service
+      - OTEL_TRACES_EXPORTER=none
 
   # Scale with: docker compose up -d --scale kafka-consumer=3
   # (no fixed container_name so Compose can create multiple replicas)

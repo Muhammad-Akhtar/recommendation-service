@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     # Active recommendation model version (Task 19)
     model_version: str = "v1"
 
+    # Observability (Task 21)
+    log_level: str = "INFO"
+    otel_service_name: str = "recommendation-service"
+    # console | none — console prints spans to stdout for local debugging
+    otel_traces_exporter: str = "none"
+
+    # Model monitoring baselines (Task 22) — used by offline drift checks only
+    drift_click_baseline: float = 10.0
+    drift_purchase_baseline: float = 2.0
+    drift_threshold: float = 0.5
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -16,6 +16,8 @@ This file continues from [`implementation_Readme_2.md`](implementation_Readme_2.
 | 18 | Feature store: PostgreSQL durable events + Redis online features (via Kafka) |
 | 19 | Redis features + Postgres candidates → versioned model ranking (v1/v2) |
 | 20 | GitHub Actions CI: pytest + Docker image build on push/PR |
+| 21 | Production observability: structured logs, request IDs, Prometheus metrics, OpenTelemetry spans |
+| 22 | Model monitoring: prediction logs, latency/CTR metrics, offline drift detection |
 
 Key principle (Task 17):
 
@@ -32,6 +34,14 @@ Key principle (Task 19):
 Key principle (Task 20):
 
 > **CI answers “is this change safe to merge?” — run tests and build the image before anyone deploys.**
+
+Key principle (Task 21):
+
+> **Observability answers “what is the system doing, and why was this request slow or wrong?” — without changing recommendation logic.**
+
+Key principle (Task 22):
+
+> **Model monitoring answers “is the model still healthy after deploy?” — log predictions and compute drift/CTR offline, never inside the hot request path.**
 
 ```text
 Pydantic model  (API validation)
@@ -66,7 +76,7 @@ Consumer (decode with reader schema)
 
 
 
-## Project layout (after Task 20)
+## Project layout (after Task 22)
 
 ```text
 recommendation-service/
@@ -75,43 +85,54 @@ recommendation-service/
 │       └── ci.yml                   # Task 20 — pytest + Docker build
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                      # Cache → Model → Postgres → popular
-│   ├── schemas.py                   # RecommendationResponse.model_version
-│   ├── config.py                    # + model_version (MODEL_VERSION)
+│   ├── main.py                      # + /monitoring/model-quality, click CTR hook
+│   ├── logging_config.py            # Task 21 — structlog JSON logging
+│   ├── middleware.py                # Task 21 — X-Request-ID middleware
+│   ├── metrics.py                   # Task 21/22 — Prometheus instruments
+│   ├── tracing.py                   # Task 21 — OpenTelemetry tracer setup
+│   ├── prediction_logger.py         # Task 22 — PredictionLog + structured log
+│   ├── drift.py                     # Task 22 — offline detect_drift helpers
+│   ├── model_quality.py             # Task 22 — served/clicked/CTR helpers
+│   ├── schemas.py                   # + ModelQualityResponse
+│   ├── config.py                    # + drift baselines
 │   ├── events.py
-│   ├── features.py                  # UserFeatures + UserEventRecord
-│   ├── feature_store.py             # Redis online features (materialized)
-│   ├── event_store.py               # PostgreSQL user_events (durable history)
-│   ├── model.py                     # Model interface; predict(features, candidates)
-│   ├── model_registry.py            # get_model("v1"|"v2")
-│   ├── recommendation_repository.py # PostgreSQL recommendation_items candidates
-│   ├── recommendation_service.py    # features + candidates → model
+│   ├── features.py
+│   ├── feature_store.py
+│   ├── event_store.py
+│   ├── model.py
+│   ├── model_registry.py
+│   ├── recommendation_repository.py
+│   ├── recommendation_service.py    # predict → log → metrics → impressions
 │   ├── schema_registry.py
 │   ├── kafka_producer.py
-│   ├── kafka_consumer.py            # PG history → Redis features
+│   ├── kafka_consumer.py
 │   ├── avro/
 │   │   ├── user_interaction_v1.avsc
 │   │   └── user_interaction.avsc
 │   ├── redis_client.py
-│   ├── database.py                  # recommendations + user_events + recommendation_items
+│   ├── database.py
 │   ├── recommendation_store.py
-│   ├── recommender.py               # Task 14 per-user store (fallback path)
-│   └── seed.py                      # Seeds recommendations + recommendation_items
+│   ├── recommender.py
+│   └── seed.py
 ├── tests/
 │   ├── test_config.py
 │   ├── test_events.py
 │   ├── test_event_store.py
 │   ├── test_feature_store.py
 │   ├── test_model.py
+│   ├── test_observability.py
+│   ├── test_drift.py                # Task 22
+│   ├── test_model_monitoring.py     # Task 22
 │   ├── test_recommendation_repository.py
 │   └── test_recommendations.py
 ├── k8s/
 │   ├── deployment.yaml
 │   └── service.yaml
-├── .gitignore                       # Task 20 — exclude .venv, caches, secrets, *.tar
+├── .gitignore
 ├── Dockerfile
-├── docker-compose.yml               # MODEL_VERSION=v1
+├── docker-compose.yml
 ├── requirements.txt
+├── Manual_Testing_Readme.md
 ├── Readme.md
 ├── implementation_Readme.md
 ├── implementation_Readme_2.md
@@ -936,6 +957,429 @@ CI
 > **What happens when a developer pushes broken code?** The Actions job fails; the PR/push shows a red X so the team knows not to merge until it’s fixed.
 
 **Task 20 in one sentence:** Every push/PR runs pytest and a Docker build on GitHub Actions so we know the recommendation service is still merge-safe — without deploying yet.
+
+
+---
+
+## Task 21 — Production Observability
+
+### Topic / goal
+
+Answer production questions without changing ranking logic:
+
+> How do we know what the system is doing, and why a request was slow or failed?
+
+Progression we implemented:
+
+```text
+Step 1 → structured logging (structlog JSON)
+Step 2 → request / correlation ID (X-Request-ID)
+Step 3 → useful application events (cache_hit, redis_unavailable, …)
+Step 4 → Prometheus metrics (+ /metrics)
+Step 5 → OpenTelemetry spans around Redis / Postgres / model
+Step 6 → inspect a real request (logs + metrics + optional console traces)
+Step 7 → tests (test_observability.py)
+```
+
+### Architecture
+
+```text
+GET /recommendations/123
+        │
+        │ request_id = abc123   (middleware)
+        ▼
+┌─────────────────────────────────────────┐
+│ Recommendation handler                  │
+│  ├── span: redis_cache_lookup           │
+│  ├── span: generate_recommendations     │
+│  │     ├── redis_get_features           │
+│  │     ├── postgres_get_candidates      │
+│  │     └── model_predict                │
+│  └── span: redis_cache_write            │
+│                                         │
+│  logs:  every event includes request_id │
+│  metrics: hits / misses / latency / …   │
+└─────────────────────────────────────────┘
+```
+
+### Files touched (Task 21)
+
+```text
+recommendation-service/
+├── app/
+│   ├── logging_config.py          # ADDED
+│   ├── middleware.py              # ADDED — RequestIdMiddleware
+│   ├── metrics.py                 # ADDED — Prometheus instruments
+│   ├── tracing.py                 # ADDED — TracerProvider setup
+│   ├── config.py                  # CHANGED — LOG_LEVEL, OTEL_*
+│   ├── main.py                    # CHANGED — wire logs/metrics/spans + /metrics
+│   └── recommendation_service.py  # CHANGED — spans + model_predictions metric
+├── tests/
+│   └── test_observability.py      # ADDED
+├── requirements.txt               # CHANGED — structlog, prometheus-client, otel
+└── docker-compose.yml             # CHANGED — LOG_LEVEL / OTEL env on app
+```
+
+| Piece | Library / mechanism |
+| --- | --- |
+| Structured logs | `structlog` → JSON lines on stdout |
+| Correlation ID | `X-Request-ID` header + `structlog.contextvars` |
+| Metrics | `prometheus_client` → `GET /metrics` |
+| Traces | OpenTelemetry SDK; exporter `console` or `none` |
+
+### Step 1–3 — Structured logs + request ID + events
+
+**Middleware** (`app/middleware.py`):
+
+1. Read inbound `X-Request-ID` or generate UUID4
+2. `bind_contextvars(request_id=…)`
+3. Echo the same ID on the response header
+
+Example log line after a cache miss + model serve:
+
+```json
+{
+  "user_id": 123,
+  "source": "model",
+  "model_version": "v1",
+  "latency_seconds": 0.012,
+  "request_id": "abc-123",
+  "event": "recommendation_served",
+  "level": "info",
+  "timestamp": "2026-09-09T…"
+}
+```
+
+Useful events we emit:
+
+| Event | When |
+| --- | --- |
+| `cache_hit` / `cache_miss` | Redis recommendation cache |
+| `redis_unavailable` | Redis get/set failure |
+| `model_prediction` | Model returned a ranked list |
+| `model_path_unavailable` | Features/candidates/model path failed |
+| `postgres_store_hit` / `postgres_unavailable` | Task-14 fallback store |
+| `popular_fallback` | Last-resort list |
+| `recommendation_served` | Always at end (source + latency) |
+
+### Step 4 — Metrics
+
+| Metric | Type | Labels |
+| --- | --- | --- |
+| `recommendation_requests_total` | Counter | `source`, `model_version` |
+| `recommendation_latency_seconds` | Histogram | — |
+| `redis_hits_total` / `redis_misses_total` | Counter | — |
+| `redis_failures_total` | Counter | `operation` |
+| `postgres_failures_total` | Counter | `operation` |
+| `model_predictions_total` | Counter | `model_version` |
+
+`source` values: `cache` | `model` | `postgres-store` | `popular-fallback`
+
+Scrape:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/metrics
+```
+
+### Step 5 — OpenTelemetry
+
+Spans created around the recommendation path:
+
+```text
+recommendations
+ ├── redis_cache_lookup
+ ├── generate_recommendations
+ │    ├── redis_get_features
+ │    ├── postgres_get_candidates
+ │    └── model_predict
+ └── redis_cache_write
+```
+
+Config (`app/config.py` / env):
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `LOG_LEVEL` | `INFO` | Structlog filter level |
+| `OTEL_SERVICE_NAME` | `recommendation-service` | Resource attribute |
+| `OTEL_TRACES_EXPORTER` | `none` | `console` prints spans to stdout; `none` disables export |
+
+Enable console spans locally:
+
+```yaml
+# docker-compose.yml → app.environment
+- OTEL_TRACES_EXPORTER=console
+```
+
+### Step 6 — Inspect / debug a real request
+
+```powershell
+# 1) Call with a known correlation ID
+Invoke-WebRequest http://localhost:8000/recommendations/123 `
+  -Headers @{ "X-Request-ID" = "qa-debug-1" }
+
+# 2) Follow logs for that ID
+docker compose logs app | Select-String "qa-debug-1"
+
+# 3) Check metrics (hits vs misses, failures, latency)
+Invoke-RestMethod http://localhost:8000/metrics | Select-String "redis_"
+```
+
+**Deliberate Redis failure** (observe logs + metrics):
+
+```powershell
+docker compose stop redis
+# then:
+Invoke-RestMethod http://localhost:8000/recommendations/123
+# Expect: popular or postgres-store fallback (depending on Postgres)
+# Logs: event=redis_unavailable, then recommendation_served with source=…
+# Metrics: redis_failures_total{operation="cache_get"} increases
+
+docker compose start redis
+```
+
+### Step 7 — Tests
+
+`tests/test_observability.py` covers:
+
+- Generated vs echoed `X-Request-ID`
+- `/metrics` exposes Prometheus text
+- Cache hit → `redis_hits_total` + `source=cache`
+- Redis failure → `redis_failures_total` + postgres-store fallback
+- Model path → `model_predictions_total`
+
+```powershell
+.\.venv\Scripts\python -m pytest -q
+# → 35 passed
+```
+
+### Done checklist
+
+- [x] Structured JSON logging (no more `print` on the recommendation path)
+- [x] Request / correlation ID middleware (`X-Request-ID`)
+- [x] Application events (`cache_hit`, `redis_unavailable`, …)
+- [x] Prometheus metrics + `GET /metrics`
+- [x] OpenTelemetry spans (Redis / Postgres / model)
+- [x] Documented how to debug a request + simulate Redis failure
+- [x] Observability tests
+- [x] Documented in this file
+
+**Task 21 in one sentence:** Every recommendation request is correlated with a request ID, emits structured events, records Prometheus metrics, and can be traced with OpenTelemetry — without changing how recommendations are computed.
+
+---
+
+## Task 22 — Model Monitoring & Drift Detection
+
+### Topic / goal
+
+Answer:
+
+> How do we know if our recommendation model is still performing correctly after deployment?
+
+We start with **model-quality monitoring**, not heavy ML math. Ranking logic is unchanged.
+
+### Architectural rule (critical)
+
+**Do not run drift detection inside the request path.**
+
+```text
+                    Request
+                       │
+                       ▼
+                     Model
+                       │
+                       ▼
+                    Response
+                       │
+                       └──────► PredictionLog + Metrics
+                                      │
+                                      ▼
+                              Monitoring process (offline)
+                                      │
+                                      ▼
+                           Drift detection / CTR review
+```
+
+The API stays fast; monitoring consumes logs/metrics asynchronously.
+
+### What each prediction captures
+
+```text
+Model prediction
+      │
+      ├── model_version
+      ├── user_id
+      ├── click_count / purchase_count / last_item_id
+      ├── recommendations returned
+      └── timestamp
+```
+
+### Files touched (Task 22)
+
+```text
+recommendation-service/
+├── app/
+│   ├── prediction_logger.py   # ADDED — PredictionLog + log_prediction
+│   ├── drift.py               # ADDED — detect_drift (offline only)
+│   ├── model_quality.py       # ADDED — served / clicked / CTR
+│   ├── metrics.py             # CHANGED — latency, count, CTR counters
+│   ├── recommendation_service.py  # CHANGED — log + metrics after predict
+│   ├── main.py                # CHANGED — click attribution + /monitoring/model-quality
+│   ├── schemas.py             # CHANGED — ModelQualityResponse
+│   └── config.py              # CHANGED — drift baselines
+└── tests/
+    ├── test_drift.py
+    └── test_model_monitoring.py
+```
+
+### Step 1–2 — PredictionLog
+
+`app/prediction_logger.py`:
+
+```python
+class PredictionLog(BaseModel):
+    user_id: int
+    model_version: str
+    recommendation_count: int
+    click_count: int
+    purchase_count: int
+    last_item_id: int | None = None
+    recommendations: list[int]
+    timestamp: datetime
+```
+
+After `model.predict(...)`, the service builds a log and emits structured event `prediction_logged` (Task 21 logger). That answers:
+
+- How many predictions did v1 / v2 make?
+- How many items were returned?
+- What feature profile were users being served with?
+
+### Step 3 — Model metrics
+
+| Metric | Type | Labels | Purpose |
+| --- | --- | --- | --- |
+| `model_predictions_total` | Counter | `model_version` | Prediction volume |
+| `model_prediction_errors_total` | Counter | `model_version` | Predict failures |
+| `model_prediction_latency_seconds` | Histogram | `model_version` | p50 / p95 latency |
+| `recommendation_count` | Histogram | `model_version` | Items returned per call |
+| `recommendations_served_total` | Counter | `model_version` | Impression items |
+| `recommendations_clicked_total` | Counter | `model_version` | Attributed clicks |
+
+Scrape: `GET /metrics`
+
+### Step 4–5 — Drift detector (offline)
+
+`app/drift.py`:
+
+```python
+detect_drift(12, 10)  # False — 20% change
+detect_drift(20, 10)  # True  — 100% change
+```
+
+Also `check_feature_drift(feature, current_values, baseline_average)` for batch windows.
+
+Baselines in config (monitoring only):
+
+| Setting | Default |
+| --- | --- |
+| `DRIFT_CLICK_BASELINE` | 10.0 |
+| `DRIFT_PURCHASE_BASELINE` | 2.0 |
+| `DRIFT_THRESHOLD` | 0.5 |
+
+**Concepts**
+
+| Kind | Meaning |
+| --- | --- |
+| Data drift | Input distribution changes (e.g. avg `click_count` 10 → 100) |
+| Concept drift | Input→outcome relationship changes |
+| Model / performance drift | App healthy but quality drops (e.g. CTR 8% → 2%) |
+
+### Step 6–7 — Model quality (CTR) + version compare
+
+**Serve path (lightweight):** after a model response, record impressions and store `last_recs:{user_id}` in Redis (item list + model_version, TTL 1h).
+
+**Feedback path:** on `POST /interactions` with `event_type=click`, if `item_id` was in that user's last recommendations, increment `recommendations_clicked_total{model_version=...}`.
+
+```text
+CTR = recommendations_clicked / recommendations_served
+```
+
+Example: 10,000 served, 500 clicks → **5% CTR**.
+
+**Read-only monitoring API:**
+
+```powershell
+Invoke-RestMethod http://localhost:8000/monitoring/model-quality
+```
+
+Returns per-version served/clicked/CTR and `best_by_ctr` (sorted). Useful before Task 23 canary decisions.
+
+Example comparison:
+
+```text
+Model    Requests(items)    CTR
+v1       50,000             4.2%
+v2       50,000             6.1%  ← better
+```
+
+### How to verify manually
+
+```powershell
+# Clear cache for a user, force model path
+docker exec recommendation-redis redis-cli DEL cache:recommendations:9001
+
+Invoke-RestMethod http://localhost:8000/recommendations/9001
+# → prediction_logged in app logs; recommendations_served increases
+
+# Click a recommended item (e.g. 10)
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/interactions `
+  -ContentType "application/json" `
+  -Body '{"user_id":9001,"item_id":10,"event_type":"click"}'
+
+Invoke-RestMethod http://localhost:8000/monitoring/model-quality
+Invoke-RestMethod http://localhost:8000/metrics | Select-String "model_prediction|recommendations_"
+```
+
+Offline drift check (Python / tests — not in API handler):
+
+```python
+from app.drift import detect_drift, check_feature_drift
+detect_drift(20, 10)  # True
+```
+
+### Tests
+
+```powershell
+.\.venv\Scripts\python -m pytest -q
+# → 48 passed
+```
+
+- `tests/test_drift.py` — normal vs significant change, feature drift window
+- `tests/test_model_monitoring.py` — PredictionLog, CTR math, served/click attribution, metrics on predict
+
+### Done checklist
+
+**Prediction monitoring**
+
+- [x] `PredictionLog`
+- [x] Log every prediction
+- [x] Record model version + useful features + recommendation count
+- [x] Prediction metrics + model latency
+
+**Drift**
+
+- [x] `drift.py` + baseline comparison
+- [x] Tests for normal / significant change
+- [x] Documented data / concept / performance drift
+
+**Model quality**
+
+- [x] Track recommendations served + clicked
+- [x] Calculate CTR
+- [x] Compare v1 vs v2 (`/monitoring/model-quality`)
+- [x] Drift kept off the request path
+- [x] Documented in this file
+
+**Task 22 in one sentence:** Every model call emits a prediction log and Prometheus signals; CTR and drift are evaluated from those signals offline so we can tell whether v1/v2 are still healthy after deploy.
 
 
 └── Event Pipeline Flow
