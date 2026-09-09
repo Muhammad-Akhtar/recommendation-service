@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-service
+spec:
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: recommendation-service
+
+  template:
+    metadata:
+      labels:
+        app: recommendation-service
+
+    spec:
+      containers:
+        - name: recommendation-service
+          image: recommendation-service:latest
+          imagePullPolicy: Never
+
+          ports:
+            - containerPort: 8000
+
+          # OPTIONAL: Add environment variables your app needs to function
+          # env:
+          #   - name: DB_HOST
+          #     value: "your-db-service-name" 
+          #   - name: PORT
+          #     value: "8000"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 30   # <-- Increased: Gives your app more time to connect to dependencies on boot
+            timeoutSeconds: 5         # <-- Increased: Gives the endpoint 5 seconds to reply before failing
+            periodSeconds: 10
+            failureThreshold: 3       # Allows 3 consecutive failures before giving up

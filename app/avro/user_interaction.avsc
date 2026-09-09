@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "UserInteractionEvent",
+  "namespace": "recommendation.events",
+  "fields": [
+    { "name": "user_id", "type": "long" },
+    { "name": "item_id", "type": "long" },
+    { "name": "event_type", "type": "string" },
+    { "name": "timestamp", "type": "string" },
+    {
+      "name": "device_type",
+      "type": ["null", "string"],
+      "default": null
+    }
+  ]
+}
