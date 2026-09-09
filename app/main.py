@@ -60,7 +60,12 @@ tracer = get_tracer("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        # Graceful degradation: pods can still serve /health, /ready (fallback),
+        # and popular recommendations when Postgres is not reachable from the cluster.
+        logger.warning("postgres_init_failed", error=str(e))
     try:
         await start_producer()
         logger.info("kafka_producer_started")
@@ -86,6 +91,29 @@ async def health() -> HealthResponse:
         status="ok",
         version=get_settings().service_version,
     )
+
+
+@app.get("/demo/cpu-burn")
+async def demo_cpu_burn(
+    duration_ms: int = 50,
+) -> dict[str, int | str]:
+    """
+    Task 24 helper: burn CPU briefly so HPA can observe utilization.
+
+    FastAPI /health alone is too cheap to push CPU on modern machines.
+    Keep duration small (e.g. 20–100ms). Do not use in real product paths.
+    """
+    duration_ms = max(1, min(duration_ms, 500))
+    deadline = time.perf_counter() + (duration_ms / 1000.0)
+    # Busy-wait on purpose (demo only)
+    x = 0
+    while time.perf_counter() < deadline:
+        x = (x + 1) % 1_000_003
+    return {
+        "status": "ok",
+        "duration_ms": duration_ms,
+        "service_version": get_settings().service_version,
+    }
 
 
 @app.get("/ready", response_model=ReadyResponse)

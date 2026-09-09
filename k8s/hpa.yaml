@@ -1,0 +1,30 @@
+# Horizontal Pod Autoscaler — Task 24
+# Scales the stable v1 Deployment by CPU utilization.
+#
+# Prerequisites:
+#   - metrics-server running (Docker Desktop Kubernetes usually includes it)
+#   - container resources.requests.cpu set on the Deployment
+#   - canary v2 removed so HPA has one clear target:
+#       kubectl delete deployment recommendation-service-v2 --ignore-not-found
+#
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: recommendation-service-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: recommendation-service-v1
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60

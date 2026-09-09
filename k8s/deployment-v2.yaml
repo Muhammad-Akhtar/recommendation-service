@@ -1,3 +1,9 @@
+# Task 23 canary / blue-green ONLY.
+# For Task 24 load testing + HPA: delete this Deployment (or keep replicas: 0)
+# so the Service does not split traffic across versions and HPA scales a single target.
+#
+#   kubectl delete deployment recommendation-service-v2 --ignore-not-found
+#
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,19 +37,29 @@ spec:
           env:
             - name: SERVICE_VERSION
               value: "v2"
+            - name: REDIS_TIMEOUT
+              value: "0.2"
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
 
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 10
 
           readinessProbe:
             httpGet:
               path: /ready
               port: 8000
-            initialDelaySeconds: 30
+            initialDelaySeconds: 5
             timeoutSeconds: 5
             periodSeconds: 10
             failureThreshold: 3
