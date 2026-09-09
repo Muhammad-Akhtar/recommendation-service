@@ -348,6 +348,12 @@ This container will later become the **Kubernetes workload**.
 
 When you're done, say **"Task 3 done"** and we'll move to **Task 4: introduce Redis caching and cache-failure fallback**.
 
+#### Run file inside docker
+
+```bash
+docker compose exec app python -m app.seed
+```
+
 
 =========================================================================================
 
