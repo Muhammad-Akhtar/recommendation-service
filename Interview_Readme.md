@@ -815,3 +815,35 @@ The key is to **maintain momentum through parallel work while keeping stakeholde
 Readme.md has tasks with description
 
 Implementation_Readme.md has the details of those Implementations
+
+
+
+
+
+========
+
+
+
+I analyzed `Interview_Answers_Readme.md` against `app/`, `k8s/`, tests, `cursor_chats/`, and `implementation_Readme.md` through `_4.md`. After **each of the 13 answers** I added an implementation map: files + line numbers, a scoped directory tree, a step-by-step workflow, and ASCII + mermaid diagrams.
+
+Open [Interview_Answers_Readme.md](c:\Projects\recommendation-service\Interview_Answers_Readme.md) — original answers are unchanged; each is followed by **Where this is implemented**.
+
+**What maps to what**
+
+| Interview topic | Main implementation |
+| --- | --- |
+| Scale + low latency | Thin `GET /recommendations` in `app/main.py` (cache → model → store → popular); Kafka/features offline; K8s HPA |
+| Cache / feature-store faults | Circuit breaker `app/resilience.py`; Redis timeouts; `/ready` does not require Redis |
+| Both cache and store down | `POPULAR_RECOMMENDATIONS` in `app/recommendation_store.py`; `main.py` 491–501 |
+| Notebook → K8s | `app/model.py` contract, `Dockerfile`, `k8s/deployment.yaml` probes |
+| Versioning | ML: `model_registry.py`; deploy: `SERVICE_VERSION` + `k8s/deployment-v2.yaml` |
+| Live-model monitoring | `/metrics`, `/monitoring/model-quality`, `drift.py` (offline only) |
+| Kafka decoupling | Domain topic `user-interactions`, key=`user_id`; extra consumer groups are conceptual |
+| Schema evolution | Avro V2 optional `device_type`, Schema Registry `FULL` |
+| Code quality (GenAI analog) | Model has no I/O; `recommendation_service.py` orchestrates |
+| Product trade-offs | Documented in `system_architecture.md` implemented vs conceptual |
+| CI/CD | `.github/workflows/ci.yml` pytest + image build; CD is manual kubectl |
+| Integration delays | Tests with FakeRedis/FakePool; API still serves if PG/Kafka are down |
+| One-task plan | `Readme.md` + `implementation_Readme.md` … `_4.md` |
+
+Billion-user extras (CDN, sharding, multi-group analytics, auto-rollback dashboards) are marked **conceptual** so the file does not claim the repo does more than it does.
