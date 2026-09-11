@@ -167,5 +167,16 @@ services:
       - KAFKA_VALUE_SUBJECT=user-interactions-value
     restart: unless-stopped
 
+  # Full stack + UI: docker compose --profile learn up --build
+  # Kafka-free revision: docker compose -f docker-compose.learn.yml up --build
+  learning-ui:
+    profiles: ["learn"]
+    build: ./frontend
+    container_name: recommendation-learn-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+
 volumes:
   postgres_data:

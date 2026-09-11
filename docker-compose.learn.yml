@@ -1,0 +1,31 @@
+# Kafka-free Learning / revision stack.
+# Usage: docker compose -f docker-compose.learn.yml up --build
+# UI: http://localhost:3000/learn   API: http://localhost:8000/api/learn/catalog
+
+services:
+  app:
+    build: .
+    container_name: recommendation-learn-api
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  learning-ui:
+    build: ./frontend
+    container_name: recommendation-learn-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      app:
+        condition: service_healthy

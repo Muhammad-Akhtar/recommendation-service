@@ -3,6 +3,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Path, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 
 from .config import get_settings
@@ -11,6 +12,7 @@ from .events import UserInteractionEvent
 from .event_store import list_user_events
 from .feature_store import get_user_features
 from .features import UserEventRecord, UserFeatures
+from .learn import router as learn_router
 from .kafka_producer import (
     check_kafka,
     check_schema_registry,
@@ -77,8 +79,25 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
+LEARN_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=LEARN_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(learn_router)
 
 
 def _cache_key(user_id: int) -> str:
