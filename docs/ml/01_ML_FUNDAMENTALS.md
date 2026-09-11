@@ -53,11 +53,15 @@ Write a tiny script that predicts `y = 2x + 1` **without** scikit-learn: a loop 
 
 **Verify:** for `x=3`, prediction is `7`.
 
+- [x] Done — `ml/phase01_fundamentals/task_1_1_what_is_a_model.py`
+
 ### Task 1.2 — Features vs labels
 
 Same data as a table: columns `x` (feature) and `y` (label). Write a function `split_xy(rows) -> (X, y)`.
 
 **Verify:** lengths match; `X` does not contain `y`.
+
+- [x] Done — `ml/phase01_fundamentals/task_1_2_features_labels.py`
 
 ### Task 1.3 — Parameters vs hyperparameters
 
@@ -65,11 +69,15 @@ Fit `sklearn.linear_model.LinearRegression` on `y ≈ 2x+1` plus tiny noise. Pri
 
 **Verify:** learned slope is near `2` (e.g. between 1.5 and 2.5).
 
+- [x] Done — `ml/phase01_fundamentals/task_1_3_parameters.py`
+
 ### Task 1.4 — Train / validation / test
 
 Use `train_test_split` twice (or train/val/test slices) on a 30-row toy set. Print sizes.
 
 **Verify:** no row index appears in more than one split.
+
+- [x] Done — `ml/phase01_fundamentals/task_1_4_splits.py`
 
 ### Task 1.5 — Supervised families
 
@@ -77,17 +85,23 @@ In comments or a short markdown note in the phase folder, classify: our future c
 
 **Verify:** the note exists and maps each family to one sentence.
 
+- [x] Done — `ml/phase01_fundamentals/task_1_5_supervised_families.md`
+
 ### Task 1.6 — Overfitting experiment
 
 Fit a high-degree polynomial (or a deep decision tree) on 8 noisy points; evaluate train vs held-out error. Then fit a line.
 
 **Verify:** complex model train error < simple model, but held-out error is **worse** (overfit). Record the numbers.
 
+- [x] Done — `ml/phase01_fundamentals/task_1_6_overfit.py`
+
 ### Task 1.7 — Leakage toy example
 
 Create a feature `leaky = y`. Train a classifier that “perfectly” predicts. Then remove that column and retrain.
 
 **Verify:** accuracy collapses without the leaky column. Write one sentence: *this is why we must not train on data unavailable at serving time*.
+
+- [x] Done — `ml/phase01_fundamentals/task_1_7_leakage.py`
 
 ## Practical Exercises
 
@@ -136,11 +150,11 @@ You can explain, without looking at `app/model.py`:
 
 ## Completion Checklist
 
-- [ ] Tasks 1.1–1.7 done and verified
-- [ ] pytest for this phase passes
-- [ ] Overfit and leakage experiments recorded (numbers in comments or a short `NOTES.md`)
-- [ ] No changes to `app/`
-- [ ] Index status for Phase 1 set to `COMPLETED`
+- [x] Tasks 1.1–1.7 done and verified
+- [x] pytest for this phase passes
+- [x] Overfit and leakage experiments recorded (numbers in comments or a short `NOTES.md`)
+- [x] No changes to `app/`
+- [x] Index status for Phase 1 set to `COMPLETED`
 
 ## What The Next Phase Will Need
 

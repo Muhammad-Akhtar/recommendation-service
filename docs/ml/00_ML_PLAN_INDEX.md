@@ -120,7 +120,7 @@ There is **no training table** and **no `clicked` label column** used for `.fit(
 
 | Phase | File | Topic | Status | Depends On |
 | --- | --- | --- | --- | --- |
-| 1 | [`01_ML_FUNDAMENTALS.md`](01_ML_FUNDAMENTALS.md) | ML fundamentals | NOT STARTED | Existing project (read-only) |
+| 1 | [`01_ML_FUNDAMENTALS.md`](01_ML_FUNDAMENTALS.md) | ML fundamentals | COMPLETED | Existing project (read-only) |
 | 2 | [`02_DATA_AND_FEATURE_ENGINEERING.md`](02_DATA_AND_FEATURE_ENGINEERING.md) | Data and features | NOT STARTED | Phase 1 |
 | 3 | [`03_FIRST_CLASSICAL_ML_MODEL.md`](03_FIRST_CLASSICAL_ML_MODEL.md) | Logistic regression (then trees) | NOT STARTED | Phases 1–2 |
 | 4 | [`04_RECOMMENDATION_SYSTEMS.md`](04_RECOMMENDATION_SYSTEMS.md) | Recsys fundamentals | NOT STARTED | Phases 1–3 |
@@ -177,9 +177,9 @@ WHEN STARTING A NEW CONTEXT WINDOW:
 10. After finishing a phase: update this index Status column, then stop.
 ```
 
-**Right now:** no phase is in progress.
+**Right now:** Phase 1 is COMPLETED. Next phase is NOT STARTED.
 
-**NEXT ACTION: Start Phase 1, Task 1.1** (do not start it in the same session that only created this plan).
+**NEXT ACTION: Start Phase 2, Task 2.1**
 
 ---
 
