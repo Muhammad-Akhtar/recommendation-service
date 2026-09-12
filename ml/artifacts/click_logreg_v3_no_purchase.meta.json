@@ -1,0 +1,26 @@
+{
+  "model_version": "v3",
+  "feature_schema_version": "fs1",
+  "feature_names": [
+    "click_count_before",
+    "item_score",
+    "same_as_last_item",
+    "has_last_item"
+  ],
+  "trained_at": "2026-09-11T13:23:28+00:00",
+  "sklearn_version": "1.9.1",
+  "n_train": 22,
+  "n_test": 10,
+  "train_max_timestamp": "2026-01-10T08:00:00Z",
+  "test_min_timestamp": "2026-01-10T08:01:00Z",
+  "C": 1.0,
+  "metrics": {
+    "accuracy": 0.6,
+    "precision": 0.6666666666666666,
+    "recall": 0.4,
+    "f1": 0.5,
+    "log_loss": 1.0556385857259156,
+    "roc_auc": 0.48
+  },
+  "artifact": "ml/artifacts/click_logreg_v3_no_purchase.joblib"
+}

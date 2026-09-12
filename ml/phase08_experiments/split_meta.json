@@ -1,0 +1,8 @@
+{
+  "n_train": 22,
+  "n_test": 10,
+  "train_max_timestamp": "2026-01-10T08:00:00Z",
+  "test_min_timestamp": "2026-01-10T08:01:00Z",
+  "cutoff_rule": "temporal 70/30 on Phase 2 PIT rows",
+  "n_test_users_with_positives": 4
+}

@@ -63,11 +63,15 @@ Implement `sigmoid(z)` and compute `p` for `z = 0, 2, -2`.
 
 **Verify:** `sigmoid(0) == 0.5`; larger `z` → `p` closer to 1.
 
+- [x] Done — `ml/phase03_classical_ml/sigmoid.py`
+
 ### Task 3.2 — One weighted example
 
 Using fake weights similar to v2’s intuition, compute `z` and `p` for one user–item row (`item_score`, `click_count_before`, `purchase_count_before`, `same_as_last_item`).
 
 **Verify:** printed formula in a comment matches the numbers.
+
+- [x] Done — `ml/phase03_classical_ml/sigmoid.py`
 
 ### Task 3.3 — Fit LogisticRegression
 
@@ -75,11 +79,15 @@ Train `sklearn.linear_model.LogisticRegression` on the Phase 2 matrix. Print `co
 
 **Verify:** `predict_proba` shape `(n, 2)`; probabilities in `[0, 1]`.
 
+- [x] Done — `ml/phase03_classical_ml/train_logreg.py`
+
 ### Task 3.4 — Rank candidates for one user
 
 Hold a user out. For 5–10 candidate items, build feature rows, score with `predict_proba[:, 1]`, sort descending, take top 5.
 
 **Verify:** output is a `list[int]` of item ids — same *shape* as `model.predict` today.
+
+- [x] Done — `ml/phase03_classical_ml/rank_with_proba.py`
 
 ### Task 3.5 — Compare to v2 heuristic
 
@@ -87,11 +95,15 @@ On the same candidate set, compute v2 scores with the production formula (copy c
 
 **Verify:** a short table: item_id, v2_score, p_click, ranks. No claim yet that ML is “better” (no ranking metrics until Phase 5).
 
+- [x] Done — `ml/phase03_classical_ml/compare_v2.py`
+
 ### Task 3.6 — Decision tree (second model)
 
 Fit `DecisionTreeClassifier(max_depth=3)`. Print the tree (`export_text`) or feature importances.
 
 **Verify:** tree uses at least one of our features; train accuracy is not the only number you report (also check a temporal test split).
+
+- [x] Done — `ml/phase03_classical_ml/train_tree.py`
 
 ## Practical Exercises
 
@@ -109,6 +121,7 @@ ml/phase03_classical_ml/
   compare_v2.py
   train_tree.py
   test_phase03.py
+  NOTES.md
 ```
 
 Do not edit `app/model.py`.
@@ -133,11 +146,11 @@ You can say: *Logistic regression learned weights; v2 guessed them. Ranking mean
 
 ## Completion Checklist
 
-- [ ] Tasks 3.1–3.6 verified
-- [ ] pytest passes
-- [ ] Hand sigmoid + sklearn fit both exist
-- [ ] `app/` unchanged
-- [ ] Index: Phase 3 `COMPLETED`
+- [x] Tasks 3.1–3.6 verified
+- [x] pytest passes
+- [x] Hand sigmoid + sklearn fit both exist
+- [x] `app/` unchanged
+- [x] Index: Phase 3 `COMPLETED`
 
 ## What The Next Phase Will Need
 

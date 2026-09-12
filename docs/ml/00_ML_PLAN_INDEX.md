@@ -121,14 +121,14 @@ There is **no training table** and **no `clicked` label column** used for `.fit(
 | Phase | File | Topic | Status | Depends On |
 | --- | --- | --- | --- | --- |
 | 1 | [`01_ML_FUNDAMENTALS.md`](01_ML_FUNDAMENTALS.md) | ML fundamentals | COMPLETED | Existing project (read-only) |
-| 2 | [`02_DATA_AND_FEATURE_ENGINEERING.md`](02_DATA_AND_FEATURE_ENGINEERING.md) | Data and features | NOT STARTED | Phase 1 |
-| 3 | [`03_FIRST_CLASSICAL_ML_MODEL.md`](03_FIRST_CLASSICAL_ML_MODEL.md) | Logistic regression (then trees) | NOT STARTED | Phases 1–2 |
-| 4 | [`04_RECOMMENDATION_SYSTEMS.md`](04_RECOMMENDATION_SYSTEMS.md) | Recsys fundamentals | NOT STARTED | Phases 1–3 |
-| 5 | [`05_RANKING_AND_EVALUATION.md`](05_RANKING_AND_EVALUATION.md) | Classification + ranking metrics | NOT STARTED | Phases 1–4 |
-| 6 | [`06_TRAINING_SERVING_PIPELINE.md`](06_TRAINING_SERVING_PIPELINE.md) | Train/serve + `predict()` integration | NOT STARTED | Phases 1–5 |
-| 7 | [`07_FEATURE_STORE_AND_SERVING.md`](07_FEATURE_STORE_AND_SERVING.md) | Online/offline features, skew | NOT STARTED | Phases 1–6 |
-| 8 | [`08_MODEL_EXPERIMENTATION.md`](08_MODEL_EXPERIMENTATION.md) | v1 vs v2 vs ML v3 experiments | NOT STARTED | Phases 1–7 |
-| 9 | [`09_MODEL_VERSIONING_AND_DEPLOYMENT.md`](09_MODEL_VERSIONING_AND_DEPLOYMENT.md) | Artifacts, champion/challenger, canary | NOT STARTED | Phases 1–8 |
+| 2 | [`02_DATA_AND_FEATURE_ENGINEERING.md`](02_DATA_AND_FEATURE_ENGINEERING.md) | Data and features | COMPLETED | Phase 1 |
+| 3 | [`03_FIRST_CLASSICAL_ML_MODEL.md`](03_FIRST_CLASSICAL_ML_MODEL.md) | Logistic regression (then trees) | COMPLETED | Phases 1–2 |
+| 4 | [`04_RECOMMENDATION_SYSTEMS.md`](04_RECOMMENDATION_SYSTEMS.md) | Recsys fundamentals | COMPLETED | Phases 1–3 |
+| 5 | [`05_RANKING_AND_EVALUATION.md`](05_RANKING_AND_EVALUATION.md) | Classification + ranking metrics | COMPLETED | Phases 1–4 |
+| 6 | [`06_TRAINING_SERVING_PIPELINE.md`](06_TRAINING_SERVING_PIPELINE.md) | Train/serve + `predict()` integration | COMPLETED | Phases 1–5 |
+| 7 | [`07_FEATURE_STORE_AND_SERVING.md`](07_FEATURE_STORE_AND_SERVING.md) | Online/offline features, skew | COMPLETED | Phases 1–6 |
+| 8 | [`08_MODEL_EXPERIMENTATION.md`](08_MODEL_EXPERIMENTATION.md) | v1 vs v2 vs ML v3 experiments | COMPLETED | Phases 1–7 |
+| 9 | [`09_MODEL_VERSIONING_AND_DEPLOYMENT.md`](09_MODEL_VERSIONING_AND_DEPLOYMENT.md) | Artifacts, champion/challenger, canary | IN PROGRESS | Phases 1–8 |
 | 10 | [`10_ML_MONITORING_AND_DRIFT.md`](10_ML_MONITORING_AND_DRIFT.md) | Drift types vs existing helpers | NOT STARTED | Phases 1–9 |
 | 11 | [`11_PROGRESSIVE_MODEL_IMPROVEMENT.md`](11_PROGRESSIVE_MODEL_IMPROVEMENT.md) | LR → tree → RF → boosting | NOT STARTED | Phases 1–10 |
 | 12 | [`12_ADVANCED_RECOMMENDATION_SYSTEMS.md`](12_ADVANCED_RECOMMENDATION_SYSTEMS.md) | Advanced concepts (mostly conceptual) | NOT STARTED | Phases 1–11 |
@@ -177,9 +177,9 @@ WHEN STARTING A NEW CONTEXT WINDOW:
 10. After finishing a phase: update this index Status column, then stop.
 ```
 
-**Right now:** Phase 1 is COMPLETED. Next phase is NOT STARTED.
+**Right now:** Phases 1–8 are COMPLETED. Phase 9 is IN PROGRESS (not started in code).
 
-**NEXT ACTION: Start Phase 2, Task 2.1**
+**NEXT ACTION: Start Phase 9, Task 9.1**
 
 ---
 

@@ -62,11 +62,15 @@ Google Rule #29: log serving features when possible so training can reuse them. 
 
 **Verify:** each serving feature has a training counterpart.
 
+- [x] Done — `ml/phase07_feature_store/NOTES_two_paths.md`
+
 ### Task 7.2 — Reuse the same update rules
 
 Extract or copy the click/purchase/`last_item_id` rules into a **pure** function (no Redis). Replay a list of events; compare final state to what Redis would hold.
 
 **Verify:** pytest — three events (click, click, purchase) → counts 2, 1, last_item of purchase.
+
+- [x] Done — `ml/phase07_feature_store/feature_rules.py`
 
 ### Task 7.3 — Point-in-time vs “current Redis”
 
@@ -77,11 +81,15 @@ For a labeled event at time t, compare:
 
 **Verify:** at least one fixture where the two disagree.
 
+- [x] Done — `ml/phase07_feature_store/replay.py`
+
 ### Task 7.4 — Skew experiment
 
 Train a tiny model on leaked (wrong) features; evaluate on correct point-in-time test features (or vice versa). Record metric drop.
 
 **Verify:** NOTES with the two scores. This is the “why we care” experiment.
+
+- [x] Done — `ml/phase07_feature_store/skew_experiment.py`
 
 ### Task 7.5 — Freshness
 
@@ -89,11 +97,15 @@ If the consumer is down, Redis is stale. Document: model still runs; quality may
 
 **Verify:** paragraph linking `get_user_features` defaults (zeros) to cold start.
 
+- [x] Done — `ml/phase07_feature_store/NOTES_freshness.md`
+
 ### Task 7.6 — Version the feature schema
 
 Add `feature_schema_version: "fs1"` to artifact `meta.json`. Serving ranker refuses to run if schema mismatch.
 
 **Verify:** test mismatch raises.
+
+- [x] Done — `ml/phase06_train_serve/ranker.py`
 
 ## Practical Exercises
 
@@ -106,10 +118,12 @@ Add `feature_schema_version: "fs1"` to artifact `meta.json`. Serving ranker refu
 ```text
 ml/phase07_feature_store/
   NOTES_two_paths.md
-  feature_rules.py          # pure event → feature update
+  NOTES_freshness.md
+  feature_rules.py
   replay.py
   skew_experiment.py
   test_phase07.py
+  NOTES.md
 ```
 
 Optional small refactor: move pure rules to a module imported by `feature_store.py` **only if** tests in `tests/test_feature_store.py` stay green. Not required to complete the phase.
@@ -132,11 +146,11 @@ You can explain: Postgres is history; Redis is a materialized view; training mus
 
 ## Completion Checklist
 
-- [ ] Tasks 7.1–7.6 verified
-- [ ] pytest passes
-- [ ] Skew experiment recorded
-- [ ] Request path still has no batch PIT joins
-- [ ] Index: Phase 7 `COMPLETED`
+- [x] Tasks 7.1–7.6 verified
+- [x] pytest passes
+- [x] Skew experiment recorded
+- [x] Request path still has no batch PIT joins
+- [x] Index: Phase 7 `COMPLETED`
 
 ## What The Next Phase Will Need
 

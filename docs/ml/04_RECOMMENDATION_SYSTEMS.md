@@ -61,11 +61,15 @@ Write `ml/phase04_recsys/NOTES_architecture.md` mapping Google’s three stages 
 
 **Verify:** fallback popular list is labeled as a degraded candidate/score path, not a third ML model.
 
+- [x] Done — `ml/phase04_recsys/NOTES_architecture.md`
+
 ### Task 4.2 — Popularity baseline
 
 From the toy events, rank items by interaction count. Compare to seeded Postgres scores (`10 → 0.95`, …).
 
 **Verify:** a table of item_id, interaction_count, catalog_score.
+
+- [x] Done — `ml/phase04_recsys/popularity.py`
 
 ### Task 4.3 — Implicit feedback matrix
 
@@ -73,11 +77,15 @@ Build a tiny user–item matrix: `1` if the user clicked/purchased the item else
 
 **Verify:** matrix is mostly zeros; no ratings 1–5.
 
+- [x] Done — `ml/phase04_recsys/interaction_matrix.py`
+
 ### Task 4.4 — Item similarity (beginner CF)
 
 Cosine similarity between two item columns (or two user rows) using numpy only or sklearn `cosine_similarity`. Recommend items similar to `last_item_id`.
 
 **Verify:** an item is most similar to itself (~1.0).
+
+- [x] Done — `ml/phase04_recsys/item_knn.py`
 
 ### Task 4.5 — Where content-based would plug in
 
@@ -85,11 +93,15 @@ Invent 3 fake item categories. Document why v2 cannot do true content-based toda
 
 **Verify:** a one-paragraph “gap” note — do not add a DB column yet unless we explicitly decide later.
 
+- [x] Done — `ml/phase04_recsys/NOTES_content_gap.md`
+
 ### Task 4.6 — Fitness ranking
 
 Fill a markdown table: approach × (fits now / later / skip) × reason tied to data we actually have.
 
 **Verify:** matrix factorization is “later / Phase 12”; logistic ranking is “next to evaluate / Phase 5–6”.
+
+- [x] Done — `ml/phase04_recsys/fitness_table.md`
 
 ## Practical Exercises
 
@@ -105,8 +117,10 @@ ml/phase04_recsys/
   popularity.py
   interaction_matrix.py
   item_knn.py
+  NOTES_content_gap.md
   fitness_table.md
   test_phase04.py
+  NOTES.md
 ```
 
 ## Tests / Verification
@@ -129,11 +143,11 @@ You can explain in an interview: *We already do candidate generation + scoring. 
 
 ## Completion Checklist
 
-- [ ] Tasks 4.1–4.6 verified
-- [ ] pytest passes
-- [ ] Fitness table completed
-- [ ] `app/` unchanged
-- [ ] Index: Phase 4 `COMPLETED`
+- [x] Tasks 4.1–4.6 verified
+- [x] pytest passes
+- [x] Fitness table completed
+- [x] `app/` unchanged
+- [x] Index: Phase 4 `COMPLETED`
 
 ## What The Next Phase Will Need
 

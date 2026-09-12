@@ -50,6 +50,8 @@ Read the files listed above. Write `ml/phase02_features/NOTES_schemas.md` mappin
 
 **Verify:** `clicked` is listed as a **label we will derive**, not a Redis field today.
 
+- [x] Done — `ml/phase02_features/NOTES_schemas.md`
+
 ### Task 2.2 — Build a tiny interaction table
 
 Create ~20–40 rows of fake events with columns:
@@ -60,6 +62,8 @@ Create ~20–40 rows of fake events with columns:
 Include known users `123` and unknown-style users.
 
 **Verify:** at least two event types and at least one user with multiple events.
+
+- [x] Done — `ml/phase02_features/toy_events.py`
 
 ### Task 2.3 — Derive labels
 
@@ -72,6 +76,8 @@ Start simple: `clicked = 1` if click/purchase else `0` on the event row itself. 
 
 **Verify:** label column is 0/1 only.
 
+- [x] Done — `ml/phase02_features/labels.py`
+
 ### Task 2.4 — Engineer features **as of** an event
 
 For each labeled row, compute:
@@ -83,11 +89,15 @@ For each labeled row, compute:
 
 **Verify:** the first event for a user has counts `0`. A later click is **not** included in that same row’s counts (no same-event leakage).
 
+- [x] Done — `ml/phase02_features/point_in_time.py`
+
 ### Task 2.5 — Missing values and types
 
 Encode `last_item_id_before` missing as a flag `has_last_item=0`. Keep IDs out of the numeric matrix or treat them as categorical later. Standardize `item_score` with train-set mean/std only.
 
 **Verify:** scaler fitted on train fold is applied to test fold (no test statistics in the scaler).
+
+- [x] Done — `ml/phase02_features/encode.py`
 
 ### Task 2.6 — Split without time travel
 
@@ -99,6 +109,8 @@ Compare:
 Find at least one row in (1) where a user’s **future** count leaks into training conceptually.
 
 **Verify:** written explanation of why (2) is the default for our service.
+
+- [x] Done — `ml/phase02_features/splits.py`
 
 ## Practical Exercises
 
@@ -114,8 +126,10 @@ ml/phase02_features/
   toy_events.py          # data
   labels.py
   point_in_time.py       # counts before timestamp
+  encode.py              # missing flags + train-only scaler
   splits.py
   test_phase02.py
+  NOTES.md
 ```
 
 No writes to Redis/Postgres required. Do not change `feature_store.py`.
@@ -140,11 +154,11 @@ You can look at Redis `click_count` and say: *this is a serving-time aggregate; 
 
 ## Completion Checklist
 
-- [ ] Tasks 2.1–2.6 verified
-- [ ] pytest passes
-- [ ] Leakage anti-pattern documented
-- [ ] `app/` unchanged
-- [ ] Index: Phase 2 `COMPLETED`
+- [x] Tasks 2.1–2.6 verified
+- [x] pytest passes
+- [x] Leakage anti-pattern documented
+- [x] `app/` unchanged
+- [x] Index: Phase 2 `COMPLETED`
 
 ## What The Next Phase Will Need
 

@@ -67,6 +67,8 @@ Add `ml/phase06_train_serve/NOTES_pipeline.md` with the diagram above mapped to 
 
 **Verify:** a line that says the model does not import `redis` or `asyncpg`.
 
+- [x] Done — `ml/phase06_train_serve/NOTES_pipeline.md`
+
 ### Task 6.2 — Train script writes artifact
 
 `ml/phase06_train_serve/train.py` fits a `Pipeline`, writes:
@@ -76,17 +78,23 @@ plus `ml/artifacts/click_logreg_v3.meta.json` (feature names, trained_at, metric
 
 **Verify:** file exists; `joblib.load` round-trips `predict_proba`.
 
+- [x] Done — `ml/phase06_train_serve/train.py`
+
 ### Task 6.3 — Pure ranker class
 
 Class with `__init__(self, artifact_path)` and `predict(features, candidates) -> list[int]`. Build one row per candidate from `UserFeatures`-shaped fields + `candidate.score`. No I/O.
 
 **Verify:** unit test with a fake `UserFeatures` and 3 candidates; returns 3 or fewer ids.
 
+- [x] Done — `ml/phase06_train_serve/ranker.py`
+
 ### Task 6.4 — Feature alignment check
 
 If extra/missing columns, fail clearly.
 
 **Verify:** test that wrong feature order is caught (compare to `meta.json` names).
+
+- [x] Done — `ml/phase06_train_serve/ranker.py`
 
 ### Task 6.5 — Optional registry hook
 
@@ -96,11 +104,15 @@ If we touch production: add `"v3"` to `MODELS` **without** changing default conf
 
 If artifact loading in Docker is awkward, keep v3 loader only in `ml/` and document the follow-up — do not break Compose.
 
+- [x] Done — `ml/phase06_train_serve/NOTES_pipeline.md` (v3 stays in `ml/`; sklearn is not a production dependency)
+
 ### Task 6.6 — Smoke inference
 
 Script: load artifact, rank seeded candidate ids for a synthetic user with `click_count=2`.
 
 **Verify:** prints `model_version` conceptually `v3` and five or fewer item ids.
+
+- [x] Done — `ml/phase06_train_serve/ranker.py`
 
 ## Practical Exercises
 
@@ -114,9 +126,13 @@ Script: load artifact, rank seeded candidate ids for a synthetic user with `clic
 ml/phase06_train_serve/
   train.py
   ranker.py
+  schema.py
   NOTES_pipeline.md
   test_phase06.py
-ml/artifacts/                 # gitignore large binaries if needed; meta.json can be committed
+  NOTES.md
+ml/artifacts/
+  click_logreg_v3.joblib
+  click_logreg_v3.meta.json
 ```
 
 Production edits only if Task 6.5 is in scope and tests stay green.
@@ -140,11 +156,11 @@ A trained artifact can rank candidates through the same function signature the s
 
 ## Completion Checklist
 
-- [ ] Tasks 6.1–6.6 verified
-- [ ] Artifact load + rank tests pass
-- [ ] Production default still v1
-- [ ] Model still has no infrastructure I/O
-- [ ] Index: Phase 6 `COMPLETED`
+- [x] Tasks 6.1–6.6 verified
+- [x] Artifact load + rank tests pass
+- [x] Production default still v1
+- [x] Model still has no infrastructure I/O
+- [x] Index: Phase 6 `COMPLETED`
 
 ## What The Next Phase Will Need
 

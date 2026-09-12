@@ -32,3 +32,12 @@ def test_task_payload_shape_for_frontend(client):
     for key in ("path", "language", "content"):
         assert key in impl
     assert "def predict(" in impl["content"]
+
+
+def test_phase_2_task_payload_shape_for_frontend(client):
+    body = client.get("/api/learn/phases/2/tasks/2.2").json()
+    assert body["id"] == "2.2"
+    assert body["done"] is True
+    impl = body["implementation"]
+    assert impl["path"] == "ml/phase02_features/toy_events.py"
+    assert "TOY_EVENTS" in impl["content"]

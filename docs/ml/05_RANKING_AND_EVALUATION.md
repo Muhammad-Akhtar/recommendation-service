@@ -52,11 +52,15 @@ On the temporal test split, compute accuracy, precision, recall, F1, ROC-AUC, lo
 
 **Verify:** all are finite; accuracy is not the only number in the report.
 
+- [x] Done — `ml/phase05_evaluation/classification_metrics.py`
+
 ### Task 5.2 — Imbalanced dummy
 
 Compare the ML model to `DummyClassifier(strategy="most_frequent")`.
 
 **Verify:** dummy can win accuracy; ML should win ROC-AUC or log loss if the toy data is learnable. Record both.
+
+- [x] Done — `ml/phase05_evaluation/classification_metrics.py`
 
 ### Task 5.3 — Implement ranking metrics ourselves
 
@@ -68,11 +72,15 @@ Use binary relevance. Discount: `rel / log2(rank+1)` with rank starting at 1.
 
 **Verify:** if the only relevant item is at position 1, NDCG@5 = 1. If it is at position 5, NDCG@5 < 1.
 
+- [x] Done — `ml/phase05_evaluation/ranking_metrics.py`
+
 ### Task 5.4 — Same accuracy, different ranking
 
 Construct two ranked lists that a pointwise 0/1 accuracy (on a fixed set of pairs) treats similarly, but NDCG@5 disagrees.
 
 **Verify:** written numbers side by side.
+
+- [x] Done — `ml/phase05_evaluation/NOTES_same_accuracy.md`
 
 ### Task 5.5 — Compare three systems at K=5
 
@@ -86,11 +94,15 @@ Average Precision@5, Recall@5, HitRate@5, MAP@5, NDCG@5 over users in the test w
 
 **Verify:** a markdown table. Winner on NDCG may lose on accuracy — that is the lesson.
 
+- [x] Done — `ml/phase05_evaluation/compare_rankers.py`
+
 ### Task 5.6 — Optional check vs Microsoft definitions
 
 Read Microsoft Recommenders `ndcg_at_k` docs. Note binary relevance vs graded. We stay binary.
 
 **Verify:** one comment in code citing the metric names.
+
+- [x] Done — `ml/phase05_evaluation/ranking_metrics.py`
 
 ## Practical Exercises
 
@@ -107,6 +119,7 @@ ml/phase05_evaluation/
   compare_rankers.py
   NOTES_same_accuracy.md
   test_phase05.py
+  NOTES.md
 ```
 
 ## Tests / Verification
@@ -129,11 +142,11 @@ You refuse to say “the ML model is better” from accuracy or from a single CT
 
 ## Completion Checklist
 
-- [ ] Tasks 5.1–5.6 verified
-- [ ] pytest passes (including NDCG fixtures)
-- [ ] Comparison table exists
-- [ ] No metrics added to the request path
-- [ ] Index: Phase 5 `COMPLETED`
+- [x] Tasks 5.1–5.6 verified
+- [x] pytest passes (including NDCG fixtures)
+- [x] Comparison table exists
+- [x] No metrics added to the request path
+- [x] Index: Phase 5 `COMPLETED`
 
 ## What The Next Phase Will Need
 

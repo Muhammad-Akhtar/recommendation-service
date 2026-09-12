@@ -56,23 +56,33 @@ Offline vs online evaluation:
 
 **Verify:** columns listed above exist.
 
+- [x] Done — `ml/phase08_experiments/EXPERIMENT_LOG.md`
+
 ### Task 8.2 — Freeze a dataset snapshot
 
 Save the toy train/test split used for all comparisons (`ml/phase08_experiments/split_meta.json`: row counts, time cutoff).
 
 **Verify:** three rankers evaluated on **that** test split only.
 
+- [x] Done — `ml/phase08_experiments/split_meta.json`
+
 ### Task 8.3 — Baseline row: v1
 
 Fill the log for popularity.
+
+- [x] Done — `ml/phase08_experiments/EXPERIMENT_LOG.md`
 
 ### Task 8.4 — Baseline row: v2
 
 Same split, production formula.
 
+- [x] Done — `ml/phase08_experiments/EXPERIMENT_LOG.md`
+
 ### Task 8.5 — ML row: v3 default hyperparameters
 
 Log NDCG@5 etc.
+
+- [x] Done — `ml/phase08_experiments/run_baselines.py`
 
 ### Task 8.6 — One-at-a-time change
 
@@ -80,15 +90,23 @@ Pick **one**: add `same_as_last_item` if missing, **or** change `C`, **or** drop
 
 **Verify:** only one factor changed vs Task 8.5.
 
+- [x] Done — `ml/phase08_experiments/EXPERIMENT_LOG.md`
+
 ### Task 8.7 — Latency microbench
 
 Time 100 `predict` calls locally for v2 vs v3. Record p50-style average. Not a K8s load test (that is `scripts/load_test.py` / Task 24).
 
 **Verify:** numbers in the log; v3 may be slower — that is acceptable to know.
 
+- [x] Done — `ml/phase08_experiments/run_baselines.py`
+
 ### Task 8.8 — Write the decision note
 
-`DECISION.md`: ship / keep experimenting / do not ship, based on **offline** metrics + skew awareness. Explicit sentence: *offline NDCG cannot prove production CTR*.
+Write `DECISION.md`: ship / keep experimenting / do not ship, based on **offline** metrics + skew awareness. Explicit sentence: *offline NDCG cannot prove production CTR*.
+
+**Verify:** the file exists and contains that sentence.
+
+- [x] Done — `ml/phase08_experiments/DECISION.md`
 
 ## Practical Exercises
 
@@ -104,7 +122,8 @@ ml/phase08_experiments/
   split_meta.json
   run_baselines.py
   DECISION.md
-  test_phase08.py          # log file has ≥3 data rows
+  test_phase08.py
+  NOTES.md
 ```
 
 ## Tests / Verification
@@ -125,11 +144,11 @@ A paper trail of experiments. Habit: one change per run. Humility: online CTR st
 
 ## Completion Checklist
 
-- [ ] Tasks 8.1–8.8 verified
-- [ ] Log has v1, v2, v3, and one variant
-- [ ] DECISION.md written
-- [ ] Default production model unchanged unless DECISION says otherwise (default: unchanged)
-- [ ] Index: Phase 8 `COMPLETED`
+- [x] Tasks 8.1–8.8 verified
+- [x] Log has v1, v2, v3, and one variant
+- [x] DECISION.md written
+- [x] Default production model unchanged unless DECISION says otherwise (default: unchanged)
+- [x] Index: Phase 8 `COMPLETED`
 
 ## What The Next Phase Will Need
 
